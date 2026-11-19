@@ -69,7 +69,7 @@ XLA compiles `lax.scan` into a GPU loop whose body is still many small kernels. 
 
 Dynamax averaged 104.1 kernels per EKF step. Nsight recorded 1.00 µs per kernel on average and 41.70 ms of summed kernel duration per gradient. The unprofiled wall times below also include dispatch and synchronization.
 
-Dynamax GPU time rose from 59.93 ms at B = 1 to 72.80 ms at B = 4,096. The CPU took 3.39 ms for one sequence. The whole-loop GPU kernel sped up the Dynamax GPU evaluation by 259.9× and 251.9× at those batch sizes.
+Dynamax GPU time rose from 59.93 ms at B = 1 to 72.80 ms at B = 4,096. The CPU took 3.39 ms for one sequence. At those batch sizes the whole-loop Pallas kernel was 259.9× and 251.9× faster than Dynamax on the GPU.
 
 Median wall time in milliseconds per loss and gradient.
 
