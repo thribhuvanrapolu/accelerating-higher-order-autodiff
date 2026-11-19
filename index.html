@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Accelerating Higher-Order Automatic Differentiation for Sequential Scientific Computing</title>
-<meta name="description" content="Fused GPU kernels with in-kernel automatic differentiation in JAX and Pallas, demonstrated on state estimation and model-predictive control.">
+<meta name="description" content="Fused GPU kernels with in-kernel automatic differentiation in JAX and Pallas, outperforming Dynamax, NVIDIA Warp and the Newton physics engine on their own official examples in state estimation and model-predictive control.">
 <meta property="og:title" content="Accelerating Higher-Order Automatic Differentiation for Sequential Scientific Computing">
-<meta property="og:description" content="Fused GPU kernels with in-kernel automatic differentiation in JAX and Pallas.">
+<meta property="og:description" content="Fused GPU kernels with in-kernel automatic differentiation in JAX and Pallas, outperforming Dynamax, NVIDIA Warp and the Newton physics engine on their own official examples in state estimation and model-predictive control.">
 <meta property="og:type" content="article">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
 <meta name="color-scheme" content="light">
@@ -131,8 +131,8 @@
     </header>
     <main>
 
-<p><em>Fused GPU kernels with in-kernel automatic differentiation in JAX and Pallas, demonstrated on state estimation and
-model-predictive control.</em></p>
+<p><em>Fused GPU kernels with in-kernel automatic differentiation in JAX and Pallas, outperforming Dynamax, NVIDIA Warp
+and the Newton physics engine on their own official examples in state estimation and model-predictive control.</em></p>
 <p><strong>Code:</strong> <a href="https://github.com/thribhuvanrapolu/accelerating-higher-order-autodiff" target="_blank" rel="noopener">github.com/thribhuvanrapolu/accelerating-higher-order-autodiff</a></p>
 <blockquote>
 <p>Experiments on: NVIDIA RTX 6000 Ada (48 GB) GPU and AMD Ryzen Threadripper PRO 9955WX CPU, in FP32.</p>
@@ -185,15 +185,15 @@ measurement sequences (separate 5-second sensor recordings of the same pendulum)
 </tr>
 <tr>
 <td></td>
-<td>Warp (ours, fused)</td>
+<td>Warp, fused (our port)</td>
 <td style="text-align: right;">61</td>
 <td style="text-align: right;">0.162</td>
 </tr>
 <tr>
 <td></td>
-<td><strong>Pallas whole rollout</strong></td>
-<td style="text-align: right;">6</td>
-<td style="text-align: right;">0.056</td>
+<td><strong>Pallas whole rollout (ours)</strong></td>
+<td style="text-align: right;"><strong>6</strong></td>
+<td style="text-align: right;"><strong>0.056</strong></td>
 </tr>
 <tr>
 <td>1: drone, second order (<span class="arithmatex">\(B = 16\)</span> rollouts)</td>
@@ -209,9 +209,9 @@ measurement sequences (separate 5-second sensor recordings of the same pendulum)
 </tr>
 <tr>
 <td></td>
-<td><strong>Pallas whole rollout</strong></td>
-<td style="text-align: right;">8</td>
-<td style="text-align: right;">0.096</td>
+<td><strong>Pallas whole rollout (ours)</strong></td>
+<td style="text-align: right;"><strong>8</strong></td>
+<td style="text-align: right;"><strong>0.096</strong></td>
 </tr>
 <tr>
 <td>2: pendulum EKF (<span class="arithmatex">\(B = 1\)</span> sequence)</td>
@@ -227,9 +227,9 @@ measurement sequences (separate 5-second sensor recordings of the same pendulum)
 </tr>
 <tr>
 <td></td>
-<td><strong>Pallas whole loop</strong></td>
-<td style="text-align: right;">3</td>
-<td style="text-align: right;">0.231</td>
+<td><strong>Pallas whole loop (ours)</strong></td>
+<td style="text-align: right;"><strong>3</strong></td>
+<td style="text-align: right;"><strong>0.231</strong></td>
 </tr>
 </tbody>
 </table></div>
@@ -604,7 +604,7 @@ automatic differentiation through 30 steps.</p>
 <td>393</td>
 </tr>
 <tr>
-<td>Warp (ours)</td>
+<td>Warp, fused (our port)</td>
 <td>same physics; one fused kernel per step, <code>wp.Tape</code>, CUDA graph</td>
 <td>30 forward + 30 adjoint</td>
 </tr>
@@ -660,7 +660,7 @@ automatic differentiation through 30 steps.</p>
 <td>1.9e-07</td>
 </tr>
 <tr>
-<td>Warp (ours)</td>
+<td>Warp, fused (our port)</td>
 <td>1.8e-06</td>
 <td>4.8e-07</td>
 <td>–</td>
@@ -688,7 +688,7 @@ automatic differentiation through 30 steps.</p>
 <td style="text-align: right;">1.91</td>
 </tr>
 <tr>
-<td>Warp (ours)</td>
+<td>Warp, fused (our port)</td>
 <td style="text-align: right;">61</td>
 <td style="text-align: right;">0.162</td>
 <td style="text-align: right;">0.294</td>

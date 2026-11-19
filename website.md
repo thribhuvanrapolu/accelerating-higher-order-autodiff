@@ -1,7 +1,7 @@
 # Accelerating Higher-Order Automatic Differentiation for Sequential Scientific Computing
 
-*Fused GPU kernels with in-kernel automatic differentiation in JAX and Pallas, demonstrated on state estimation and
-model-predictive control.*
+*Fused GPU kernels with in-kernel automatic differentiation in JAX and Pallas, outperforming Dynamax, NVIDIA Warp
+and the Newton physics engine on their own official examples in state estimation and model-predictive control.*
 
 **Code:** [github.com/thribhuvanrapolu/accelerating-higher-order-autodiff](https://github.com/thribhuvanrapolu/accelerating-higher-order-autodiff)
 
@@ -44,14 +44,14 @@ measurement sequences (separate 5-second sensor recordings of the same pendulum)
 | Experiment | Implementation | Kernels per gradient | ms per gradient |
 |---|---|---:|---:|
 | 1: drone, first order ($B = 16$ rollouts) | Newton example (Warp) | 393 | 0.917 |
-| | Warp (ours, fused) | 61 | 0.162 |
-| | **Pallas whole rollout** | 6 | 0.056 |
+| | Warp, fused (our port) | 61 | 0.162 |
+| | **Pallas whole rollout (ours)** | **6** | **0.056** |
 | 1: drone, second order ($B = 16$ rollouts) | Warp 1.19 | – (needs a hand-written Jacobian) | – |
 | | JAX natural | 4,801 | 5.91 |
-| | **Pallas whole rollout** | 8 | 0.096 |
+| | **Pallas whole rollout (ours)** | **8** | **0.096** |
 | 2: pendulum EKF ($B = 1$ sequence) | Dynamax (GPU) | 32,427 | 59.93 |
 | | Dynamax (CPU) | – | 3.39 |
-| | **Pallas whole loop** | 3 | 0.231 |
+| | **Pallas whole loop (ours)** | **3** | **0.231** |
 
 ---
 
@@ -399,7 +399,7 @@ automatic differentiation through 30 steps.
 | implementation | description | kernels per optimisation step |
 |---|---|---|
 | Newton example (Warp) | the official code, timed through its captured CUDA graph | 393 |
-| Warp (ours) | same physics; one fused kernel per step, `wp.Tape`, CUDA graph | 30 forward + 30 adjoint |
+| Warp, fused (our port) | same physics; one fused kernel per step, `wp.Tape`, CUDA graph | 30 forward + 30 adjoint |
 | JAX natural | small vectors, `vmap`, `lax.scan` | thousands |
 | JAX lanes | structure-of-arrays layout, `lax.scan` | fewer thousands |
 | **Pallas whole rollout** | one kernel for the rollout, one for its backward pass (`jax.vjp` inside) | single digits |
@@ -413,14 +413,14 @@ $B = 16$; float32 on the RTX 6000 Ada compared with a float64 CPU reference:
 | JAX natural | 5.5e-07 | 3.0e-07 | 7.4e-07 | 5.3e-07 |
 | JAX lanes | 7.7e-07 | 4.6e-07 | 7.4e-07 | 2.1e-07 |
 | Pallas whole rollout | 6.6e-07 | 4.6e-07 | 8.5e-07 | 1.9e-07 |
-| Warp (ours) | 1.8e-06 | 4.8e-07 | – | – |
+| Warp, fused (our port) | 1.8e-06 | 4.8e-07 | – | – |
 
 ### 5.6 Performance, Part A (first-order gradient)
 
 | Implementation | Kernels per gradient (B = 16) | ms, B = 16 | ms, B = 256 | ms, B = 4096 |
 |---|---:|---:|---:|---:|
 | Newton example (Warp) | 393 | 0.917 | 1.25 | 1.91 |
-| Warp (ours) | 61 | 0.162 | 0.294 | 0.302 |
+| Warp, fused (our port) | 61 | 0.162 | 0.294 | 0.302 |
 | JAX natural | 2,566 | 2.79 | 3.23 | 3.84 |
 | JAX lanes | 1,839 | 2.38 | 2.38 | 2.51 |
 | **Pallas whole rollout** | 6 | 0.056 | 0.066 | 0.066 |
