@@ -9,8 +9,8 @@
 <meta property="og:description" content="Fused GPU kernels with in-kernel automatic differentiation in JAX and Pallas.">
 <meta property="og:type" content="article">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
 <style>
   :root {
     --bg: #ffffff;
@@ -21,19 +21,6 @@
     --code-bg: #f6f8fa;
     --quote-bg: #f1f6fc;
     --table-head: #f6f8fa;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #0d1117;
-      --fg: #e6edf3;
-      --muted: #9198a1;
-      --accent: #79b0f2;
-      --rule: #30363d;
-      --code-bg: #161b22;
-      --quote-bg: #121d2b;
-      --table-head: #161b22;
-    }
-    figure img { background: #ffffff; border-radius: 6px; }
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
@@ -46,40 +33,51 @@
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
 
-  .layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    max-width: 1180px;
-    margin: 0 auto;
-    padding: 0 16px;
-    gap: 48px;
-  }
-  @media (min-width: 1100px) {
-    .layout { grid-template-columns: 260px minmax(0, 800px); }
-  }
+  /* layout: the article is centred on the page, the contents list is pinned to the left edge */
+  .layout { padding: 0 16px; }
+  .content { max-width: 800px; margin: 0 auto; }
 
-  /* table of contents */
+  /* table of contents (hidden on narrow screens) */
   nav.toc { display: none; }
   @media (min-width: 1100px) {
     nav.toc {
       display: block;
-      position: sticky;
+      position: fixed;
       top: 0;
-      align-self: start;
-      max-height: 100vh;
+      left: 0;
+      width: 270px;
+      height: 100vh;
       overflow-y: auto;
-      padding: 40px 0 24px;
+      padding: 40px 16px 24px 24px;
+      border-right: 1px solid var(--rule);
+      background: var(--bg);
       font-size: 14px;
       line-height: 1.45;
     }
+    .content { margin-left: 310px; margin-right: 24px; }   /* not enough room to centre: sit right of the list */
+  }
+  @media (min-width: 1420px) {
+    .content { margin: 0 auto; }                          /* wide screens: exactly centred */
   }
   nav.toc .toc-title { font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-size: 12px; margin-bottom: 10px; }
   nav.toc ul { list-style: none; margin: 0; padding: 0; }
-  nav.toc li { margin: 6px 0; }
-  nav.toc ul ul { padding-left: 12px; border-left: 1px solid var(--rule); margin: 4px 0 8px; }
+  nav.toc > ul > li { margin: 6px 0; display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: start; }
+  nav.toc > ul > li > a { grid-column: 2; }
+  nav.toc > ul > li > ul { grid-column: 2; }
+  nav.toc ul ul { display: none; padding-left: 10px; border-left: 1px solid var(--rule); margin: 4px 0 8px; }
+  nav.toc li.open > ul { display: block; }
   nav.toc ul ul li { margin: 3px 0; }
-  nav.toc a { color: var(--muted); }
-  nav.toc a:hover { color: var(--accent); }
+  nav.toc a { color: var(--muted); display: block; padding-left: 6px; border-left: 2px solid transparent; margin-left: -8px; }
+  nav.toc ul ul a { margin-left: -12px; }
+  nav.toc a:hover { color: var(--accent); text-decoration: none; }
+  nav.toc a.active { color: var(--accent); font-weight: 600; border-left-color: var(--accent); }
+  nav.toc .toggle {
+    grid-column: 1; grid-row: 1;
+    width: 18px; height: 22px; padding: 0; border: 0; background: none; cursor: pointer;
+    color: var(--muted); font-size: 11px; line-height: 22px; transition: transform .15s;
+  }
+  nav.toc .toggle:hover { color: var(--accent); }
+  nav.toc li.open > .toggle { transform: rotate(90deg); }
 
   /* article */
   header.page { padding: 48px 0 8px; }
@@ -127,7 +125,7 @@
     <div class="toc-title">Contents</div>
     {{toc}}
   </nav>
-  <div>
+  <div class="content">
     <header class="page">
       <h1>{{title_html}}</h1>
     </header>
@@ -158,6 +156,65 @@
       if (lang && hljs.getLanguage(lang)) { hljs.highlightElement(el); }
     });
   });
+
+  // Table of contents: collapsible sections that follow the reader (accordion: one section open at a time)
+  (function () {
+    var nav = document.querySelector("nav.toc");
+    var sections = Array.prototype.slice.call(nav.querySelectorAll(":scope > ul > li"));
+
+    // an arrow button in front of every section that has subsections
+    sections.forEach(function (li) {
+      if (!li.querySelector("ul")) { return; }
+      var button = document.createElement("button");
+      button.className = "toggle";
+      button.type = "button";
+      button.setAttribute("aria-label", "Show or hide subsections");
+      button.textContent = "▶";
+      button.addEventListener("click", function () { li.classList.toggle("open"); });
+      li.insertBefore(button, li.firstChild);
+    });
+
+    // clicking a section title also opens its subsections
+    sections.forEach(function (li) {
+      li.querySelector(":scope > a").addEventListener("click", function () { openOnly(li); });
+    });
+
+    function openOnly(li) {
+      sections.forEach(function (other) { other.classList.toggle("open", other === li); });
+    }
+
+    // map every heading in the page to its link (and its top-level section) in the table of contents
+    var entries = [];
+    nav.querySelectorAll("a[href^='#']").forEach(function (a) {
+      var heading = document.getElementById(decodeURIComponent(a.getAttribute("href").slice(1)));
+      if (heading) { entries.push({heading: heading, link: a, section: a.closest("nav.toc > ul > li")}); }
+    });
+
+    var currentSection = null;
+    function update() {
+      var current = entries[0];
+      entries.forEach(function (e) { if (e.heading.getBoundingClientRect().top < 120) { current = e; } });
+      if (!current) { return; }
+      nav.querySelectorAll("a.active").forEach(function (a) { a.classList.remove("active"); });
+      current.link.classList.add("active");
+      var sectionLink = current.section.querySelector(":scope > a");
+      if (sectionLink !== current.link) { sectionLink.classList.add("active"); }
+      if (current.section !== currentSection) {        // entering a new section: open it, close the others
+        currentSection = current.section;
+        openOnly(currentSection);
+      }
+      // keep the highlighted entry visible inside the (scrollable) table of contents
+      var box = nav.getBoundingClientRect(), item = current.link.getBoundingClientRect();
+      if (item.top < box.top + 40 || item.bottom > box.bottom - 40) {
+        nav.scrollTop += item.top - box.top - box.height / 3;
+      }
+    }
+
+    window.addEventListener("scroll", update, {passive: true});   // cheap: about 50 headings
+    window.addEventListener("hashchange", update);
+    window.addEventListener("load", update);
+    update();
+  })();
 </script>
 </body>
 </html>
