@@ -1,0 +1,37 @@
+[
+  {
+    "implementation": "Dynamax",
+    "batch": 1,
+    "kernels_per_call": 32427.0,
+    "gpu_busy_ms_per_call": 42.282677,
+    "mean_kernel_us": 1.3039342831590959
+  },
+  {
+    "implementation": "JAX natural",
+    "batch": 1,
+    "kernels_per_call": 18822.0,
+    "gpu_busy_ms_per_call": 20.136648,
+    "mean_kernel_us": 1.0698463500159388
+  },
+  {
+    "implementation": "JAX lanes",
+    "batch": 1,
+    "kernels_per_call": 12404.0,
+    "gpu_busy_ms_per_call": 12.93204,
+    "mean_kernel_us": 1.0425701386649469
+  },
+  {
+    "implementation": "Pallas: kernel per step",
+    "batch": 1,
+    "kernels_per_call": 7204.0,
+    "gpu_busy_ms_per_call": 7.078677333333333,
+    "mean_kernel_us": 0.9826037386637053
+  },
+  {
+    "implementation": "Pallas: whole loop",
+    "batch": 1,
+    "kernels_per_call": 3.0,
+    "gpu_busy_ms_per_call": 0.21349533333333334,
+    "mean_kernel_us": 71.16511111111112
+  }
+]
