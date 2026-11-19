@@ -1,0 +1,1205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Accelerating Higher-Order Automatic Differentiation for Sequential Scientific Computing</title>
+<meta name="description" content="Fused GPU kernels with in-kernel automatic differentiation in JAX and Pallas, demonstrated on state estimation and model-predictive control.">
+<meta property="og:title" content="Accelerating Higher-Order Automatic Differentiation for Sequential Scientific Computing">
+<meta property="og:description" content="Fused GPU kernels with in-kernel automatic differentiation in JAX and Pallas.">
+<meta property="og:type" content="article">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1f2328;
+    --muted: #59636e;
+    --accent: #1f5fa8;
+    --rule: #d8dee4;
+    --code-bg: #f6f8fa;
+    --quote-bg: #f1f6fc;
+    --table-head: #f6f8fa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117;
+      --fg: #e6edf3;
+      --muted: #9198a1;
+      --accent: #79b0f2;
+      --rule: #30363d;
+      --code-bg: #161b22;
+      --quote-bg: #121d2b;
+      --table-head: #161b22;
+    }
+    figure img { background: #ffffff; border-radius: 6px; }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 17px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 16px;
+    gap: 48px;
+  }
+  @media (min-width: 1100px) {
+    .layout { grid-template-columns: 260px minmax(0, 800px); }
+  }
+
+  /* table of contents */
+  nav.toc { display: none; }
+  @media (min-width: 1100px) {
+    nav.toc {
+      display: block;
+      position: sticky;
+      top: 0;
+      align-self: start;
+      max-height: 100vh;
+      overflow-y: auto;
+      padding: 40px 0 24px;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+  }
+  nav.toc .toc-title { font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-size: 12px; margin-bottom: 10px; }
+  nav.toc ul { list-style: none; margin: 0; padding: 0; }
+  nav.toc li { margin: 6px 0; }
+  nav.toc ul ul { padding-left: 12px; border-left: 1px solid var(--rule); margin: 4px 0 8px; }
+  nav.toc ul ul li { margin: 3px 0; }
+  nav.toc a { color: var(--muted); }
+  nav.toc a:hover { color: var(--accent); }
+
+  /* article */
+  header.page { padding: 48px 0 8px; }
+  header.page h1 { font-size: 2.1rem; line-height: 1.25; margin: 0 0 8px; letter-spacing: -0.01em; }
+  main { padding-bottom: 80px; min-width: 0; }
+  main h2 { font-size: 1.55rem; margin: 2.4em 0 .6em; padding-bottom: .3em; border-bottom: 1px solid var(--rule); line-height: 1.3; }
+  main h3 { font-size: 1.2rem; margin: 1.8em 0 .5em; line-height: 1.35; }
+  main h2, main h3 { scroll-margin-top: 16px; }
+  main p, main li { overflow-wrap: anywhere; }
+  hr { border: 0; border-top: 1px solid var(--rule); margin: 2.5em 0; }
+  blockquote {
+    margin: 1.2em 0;
+    padding: .7em 1em;
+    background: var(--quote-bg);
+    border-left: 4px solid var(--accent);
+    border-radius: 0 6px 6px 0;
+    color: var(--fg);
+  }
+  blockquote p { margin: 0; }
+
+  code { font: 0.88em/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--code-bg); padding: .12em .35em; border-radius: 4px; }
+  pre { background: var(--code-bg); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 16px; overflow-x: auto; line-height: 1.45; }
+  pre code { background: none; padding: 0; font-size: 0.84em; }
+  pre code.hljs { background: none; padding: 0; }
+
+  .table-wrap { overflow-x: auto; margin: 1.2em 0; }
+  table { border-collapse: collapse; font-size: 0.92em; min-width: 100%; }
+  th, td { border: 1px solid var(--rule); padding: 7px 11px; vertical-align: top; }
+  th { background: var(--table-head); text-align: left; font-weight: 600; }
+
+  figure { margin: 1.6em 0; text-align: center; }
+  figure img { max-width: 100%; height: auto; }
+  figcaption { color: var(--muted); font-size: 0.9em; margin-top: 6px; }
+
+  .arithmatex { overflow-x: auto; overflow-y: hidden; }
+  div.arithmatex { margin: 1em 0; padding: 2px 0; }
+  .katex { font-size: 1.05em; }
+
+  footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--rule); padding: 20px 0 40px; margin-top: 40px; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav class="toc" aria-label="Contents">
+    <div class="toc-title">Contents</div>
+    <ul><li><a href="#abstract">Abstract</a></li><li><a href="#1-introduction">1. Introduction</a><ul><li><a href="#11-sequential-programs-with-derivatives-inside">1.1 Sequential programs with derivatives inside</a></li><li><a href="#12-the-derivative-order-rule">1.2 The derivative-order rule</a></li><li><a href="#13-the-two-experiments">1.3 The two experiments</a></li></ul></li><li><a href="#2-why-sequential-programs-are-launch-bound-on-gpus">2. Why sequential programs are launch-bound on GPUs</a></li><li><a href="#3-diagnosis-counting-kernels-with-nvidia-nsight-systems">3. Diagnosis: counting kernels with NVIDIA Nsight Systems</a></li><li><a href="#4-method-the-whole-loop-in-one-kernel-with-automatic-differentiation-inside">4. Method: the whole loop in one kernel, with automatic differentiation inside</a><ul><li><a href="#41-structure-of-arrays-layout">4.1 Structure-of-arrays layout</a></li><li><a href="#42-the-whole-loop-inside-one-forward-kernel">4.2 The whole loop inside one forward kernel</a></li><li><a href="#43-the-backward-kernel-with-jaxvjp-inside">4.3 The backward kernel, with jax.vjp inside</a></li><li><a href="#44-integration-with-jaxgrad-via-jaxcustom_vjp">4.4 Integration with jax.grad via jax.custom_vjp</a></li><li><a href="#45-summary-of-the-recipe">4.5 Summary of the recipe</a></li></ul></li><li><a href="#5-experiment-1-vs-nvidia-warp-drone-model-predictive-control">5. Experiment 1 — vs. NVIDIA Warp: drone model-predictive control</a><ul><li><a href="#51-dynamics">5.1 Dynamics</a></li><li><a href="#52-objective-part-a">5.2 Objective (Part A)</a></li><li><a href="#53-part-b-an-uncertainty-aware-objective-with-a-jacobian-inside">5.3 Part B: an uncertainty-aware objective with a Jacobian inside</a></li><li><a href="#54-implementations">5.4 Implementations</a></li><li><a href="#55-correctness">5.5 Correctness</a></li><li><a href="#56-performance-part-a-first-order-gradient">5.6 Performance, Part A (first-order gradient)</a></li><li><a href="#57-performance-part-b-second-order-gradient">5.7 Performance, Part B (second-order gradient)</a></li></ul></li><li><a href="#6-experiment-2-vs-dynamax-learning-a-pendulum-through-an-extended-kalman-filter">6. Experiment 2 — vs. Dynamax: learning a pendulum through an extended Kalman filter</a><ul><li><a href="#61-model">6.1 Model</a></li><li><a href="#62-one-step-of-the-extended-kalman-filter">6.2 One step of the extended Kalman filter</a></li><li><a href="#63-training-objective-and-why-it-is-second-order">6.3 Training objective and why it is second order</a></li><li><a href="#64-implementations">6.4 Implementations</a></li><li><a href="#65-correctness">6.5 Correctness</a></li><li><a href="#66-performance">6.6 Performance</a></li><li><a href="#67-parameter-learning">6.7 Parameter learning</a></li></ul></li><li><a href="#7-scope-where-higher-order-differentiation-arises">7. Scope: where higher-order differentiation arises</a><ul><li><a href="#71-overview">7.1 Overview</a></li><li><a href="#72-governing-equations-by-domain">7.2 Governing equations by domain</a></li></ul></li><li><a href="#8-limitations">8. Limitations</a></li><li><a href="#9-related-work">9. Related work</a></li><li><a href="#10-citation">10. Citation</a></li></ul>
+  </nav>
+  <div>
+    <header class="page">
+      <h1>Accelerating Higher-Order Automatic Differentiation for Sequential Scientific Computing</h1>
+    </header>
+    <main>
+
+<p><em>Fused GPU kernels with in-kernel automatic differentiation in JAX and Pallas, demonstrated on state estimation and
+model-predictive control.</em></p>
+<p><strong>Code:</strong> <a href="https://github.com/thribhuvanrapolu/accelerating-higher-order-autodiff" target="_blank" rel="noopener">github.com/thribhuvanrapolu/accelerating-higher-order-autodiff</a></p>
+<blockquote>
+<p>Experiments on: NVIDIA RTX 6000 Ada (48 GB) GPU and AMD Ryzen Threadripper PRO 9955WX CPU, in FP32.</p>
+</blockquote>
+<hr />
+<h2 id="abstract">Abstract</h2>
+<p>Many scientific models are long loops of small steps like an extended Kalman filter over a sensor log, a simulator
+rolled out for model-predictive control, or the time stepping of an ODE solver. Training them often needs
+<strong>higher-order</strong> automatic differentiation, because the forward computation already contains a derivative (a
+Jacobian for covariance propagation, a force computed as a gradient of an energy). In natural JAX, each step of such a
+loop compiles to dozens or hundreds of tiny GPU kernels. The runtime is then set by <strong>kernel-launch overhead</strong>,
+not by arithmetic, and a GPU can be slower than a CPU.</p>
+<p>We present a simple recipe that removes this bottleneck:</p>
+<ol>
+<li>Write the step with one array per scalar (a "structure-of-arrays" layout).</li>
+<li>Run the <strong>entire loop inside one Pallas kernel</strong>.</li>
+<li>Obtain the backward pass from a second kernel that applies <strong><code>jax.vjp</code> inside the kernel</strong>.</li>
+<li>Connect the two kernels with <code>jax.custom_vjp</code>.</li>
+</ol>
+<p>No derivative is written by hand, and derivatives of derivatives are generated automatically.</p>
+<p>We evaluate the recipe on two official examples from established libraries. In both, one gradient processes <span class="arithmatex">\(B\)</span>
+independent problems in parallel, while the <span class="arithmatex">\(T\)</span> time steps of each problem must run one after another. In
+Experiment 1 the <span class="arithmatex">\(B\)</span> problems are drone rollouts (simulations of candidate control plans). In Experiment 2 they are
+measurement sequences (separate 5-second sensor recordings of the same pendulum).</p>
+<ul>
+<li><strong>Experiment 1, vs. NVIDIA Warp: Newton's differentiable drone</strong> (model-predictive control). For <span class="arithmatex">\(B = 16\)</span> rollouts, as
+  in Newton's example, the first-order gradient took <strong>0.056 ms with Pallas, 0.162 ms with fused Warp and 0.917 ms with the official Newton
+  example</strong>. With an uncertainty-aware objective that contains a Jacobian (second order), which released Warp cannot
+  differentiate automatically, Pallas took 0.096 ms, 61.9× faster than natural JAX.</li>
+<li><strong>Experiment 2, vs. Dynamax: a pendulum extended Kalman filter</strong>, where we learn gravity and sensor noise through
+  the filter's log-likelihood (second order). For <span class="arithmatex">\(B = 1\)</span> sequence of <span class="arithmatex">\(T = 400\)</span> steps, the gradient took <strong>59.93 ms with
+  Dynamax and 0.231 ms with Pallas (259.9×)</strong>. The 300-step fit on <span class="arithmatex">\(B = 16\)</span> sequences took 19.37 s and 0.098 s
+  respectively.</li>
+</ul>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Experiment</th>
+<th>Implementation</th>
+<th style="text-align: right;">Kernels per gradient</th>
+<th style="text-align: right;">ms per gradient</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1: drone, first order (<span class="arithmatex">\(B = 16\)</span> rollouts)</td>
+<td>Newton example (Warp)</td>
+<td style="text-align: right;">393</td>
+<td style="text-align: right;">0.917</td>
+</tr>
+<tr>
+<td></td>
+<td>Warp (ours, fused)</td>
+<td style="text-align: right;">61</td>
+<td style="text-align: right;">0.162</td>
+</tr>
+<tr>
+<td></td>
+<td><strong>Pallas whole rollout</strong></td>
+<td style="text-align: right;">6</td>
+<td style="text-align: right;">0.056</td>
+</tr>
+<tr>
+<td>1: drone, second order (<span class="arithmatex">\(B = 16\)</span> rollouts)</td>
+<td>Warp 1.19</td>
+<td style="text-align: right;">– (needs a hand-written Jacobian)</td>
+<td style="text-align: right;">–</td>
+</tr>
+<tr>
+<td></td>
+<td>JAX natural</td>
+<td style="text-align: right;">4,801</td>
+<td style="text-align: right;">5.91</td>
+</tr>
+<tr>
+<td></td>
+<td><strong>Pallas whole rollout</strong></td>
+<td style="text-align: right;">8</td>
+<td style="text-align: right;">0.096</td>
+</tr>
+<tr>
+<td>2: pendulum EKF (<span class="arithmatex">\(B = 1\)</span> sequence)</td>
+<td>Dynamax (GPU)</td>
+<td style="text-align: right;">32,427</td>
+<td style="text-align: right;">59.93</td>
+</tr>
+<tr>
+<td></td>
+<td>Dynamax (CPU)</td>
+<td style="text-align: right;">–</td>
+<td style="text-align: right;">3.39</td>
+</tr>
+<tr>
+<td></td>
+<td><strong>Pallas whole loop</strong></td>
+<td style="text-align: right;">3</td>
+<td style="text-align: right;">0.231</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="1-introduction">1. Introduction</h2>
+<h3 id="11-sequential-programs-with-derivatives-inside">1.1 Sequential programs with derivatives inside</h3>
+<p>A large class of scientific programs has the form</p>
+<div class="arithmatex">\[s_{k+1} = \Phi(s_k, \theta, u_k), \qquad k = 0, \dots, T-1, \qquad L(\theta) = \sum_{k} \ell(s_k, \theta),\]</div>
+<p>where:</p>
+<ul>
+<li><span class="arithmatex">\(s_k\)</span> is a small state (a few to a few dozen numbers);</li>
+<li><span class="arithmatex">\(\Phi\)</span> is a cheap step (hundreds to thousands of floating-point operations);</li>
+<li><span class="arithmatex">\(T\)</span> is long (tens to thousands of steps);</li>
+<li>we need <span class="arithmatex">\(\nabla_\theta L\)</span> for learning, calibration or control.</li>
+</ul>
+<p>Often the step <span class="arithmatex">\(\Phi\)</span> itself contains a derivative:</p>
+<ul>
+<li>an extended Kalman filter propagates its covariance with the Jacobian <span class="arithmatex">\(F_k = \partial f / \partial x\)</span>;</li>
+<li>molecular dynamics computes forces as <span class="arithmatex">\(f = -\nabla E\)</span>;</li>
+<li>physics-informed losses contain <span class="arithmatex">\(u_{xx}\)</span>;</li>
+<li>Hamiltonian models evolve along <span class="arithmatex">\(\nabla H\)</span>.</li>
+</ul>
+<h3 id="12-the-derivative-order-rule">1.2 The derivative-order rule</h3>
+<p>Let <span class="arithmatex">\(d\)</span> be the number of derivatives nested <em>inside</em> the forward computation. Training then needs automatic
+differentiation of order</p>
+<div class="arithmatex">\[\text{order} = d + 1.\]</div>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th><span class="arithmatex">\(d\)</span></th>
+<th>examples</th>
+<th>order needed for training</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>rollout objectives, trajectory optimisation</td>
+<td>1 (ordinary gradient)</td>
+</tr>
+<tr>
+<td>1</td>
+<td>Kalman filters, force fields, Hamiltonian models, physics-informed losses</td>
+<td>2</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Hessian-based methods (Newton steps, DDP/iLQR with second-order terms) inside the loop</td>
+<td>3</td>
+</tr>
+</tbody>
+</table></div>
+<p>Higher-order automatic differentiation is routine in JAX: <code>jax.grad</code> of a function that calls <code>jax.jacfwd</code> simply
+works. The difficulty is performance on GPUs (Section 2).</p>
+<h3 id="13-the-two-experiments">1.3 The two experiments</h3>
+<p>We test the recipe against two established libraries, each on its own official example.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th></th>
+<th>Experiment 1: vs. NVIDIA Warp (Section 5)</th>
+<th>Experiment 2: vs. Dynamax (Section 6)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>problem</td>
+<td>drone model-predictive control (Newton's official example)</td>
+<td>learning <span class="arithmatex">\(g\)</span> and <span class="arithmatex">\(r\)</span> of a pendulum through an EKF (Dynamax's official example)</td>
+</tr>
+<tr>
+<td>what <span class="arithmatex">\(B\)</span> counts</td>
+<td>rollouts (candidate control plans)</td>
+<td>measurement sequences (sensor recordings)</td>
+</tr>
+<tr>
+<td>time steps <span class="arithmatex">\(T\)</span></td>
+<td>30 simulator steps</td>
+<td>400 filter steps</td>
+</tr>
+<tr>
+<td>inner derivatives <span class="arithmatex">\(d\)</span></td>
+<td>Part A: <span class="arithmatex">\(d = 0\)</span> (first order). Part B: <span class="arithmatex">\(d = 1\)</span> (second order)</td>
+<td><span class="arithmatex">\(d = 1\)</span> (second order)</td>
+</tr>
+<tr>
+<td>what it shows</td>
+<td>Part A: speed against a fast, hand-built first-order tool. Part B: Pallas handles a Jacobian inside the objective automatically, while released Warp needs it written by hand</td>
+<td>a natural JAX library is launch-bound, and the GPU is slower than the CPU</td>
+</tr>
+<tr>
+<td>headline</td>
+<td>Part A (<span class="arithmatex">\(B = 16\)</span>): 0.056 ms vs. 0.162 ms (Warp) and 0.917 ms (Newton). Part B: 0.096 ms vs. 5.91 ms (natural JAX)</td>
+<td><span class="arithmatex">\(B = 1\)</span>: 0.231 ms vs. 59.93 ms (Dynamax), 259.9×</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="2-why-sequential-programs-are-launch-bound-on-gpus">2. Why sequential programs are launch-bound on GPUs</h2>
+<p>In JAX a loop is written with <code>lax.scan</code>, and XLA compiles the loop body into GPU kernels. XLA cannot fuse the whole
+body into one kernel. Matrix products and reductions typically run as their own kernels, and Jacobians built with
+<code>jax.jacfwd</code> add more. The backward pass adds kernels that save and reload intermediate values at every step, and a
+general-purpose library such as Dynamax adds further small operations to support arbitrary model shapes.
+The measurements in this section and the next come from Experiment 2 (Section 6), the Dynamax pendulum filter.</p>
+<p>For a gradient that launches <span class="arithmatex">\(N\)</span> short kernels in sequence, a useful time model is
+<span class="arithmatex">\(t_{\rm wall} \approx N(\bar t_{\rm kernel} + \bar t_{\rm gap})\)</span>, where the gap term includes dispatch and synchronization.
+Each pendulum EKF step does only a few hundred arithmetic operations per sequence, yet its forward and backward
+passes launch many separate kernels. At <span class="arithmatex">\(B=1\)</span>, Dynamax launched 32,427 kernels for a gradient that took 59.93 ms.
+That gives an effective wall time of <span class="arithmatex">\(c = t_{\rm wall}/N \approx 1.85\,\mu\mathrm{s}\)</span> per kernel.</p>
+<p>Nsight Systems measured 1.30 µs of execution per kernel, or 42.28 ms summed over the gradient. That is about 71%
+of the separately timed 59.93 ms. The remaining 17.65 ms estimates the time outside kernel execution, including
+gaps between launches. Profiling and wall timing used separate runs, so this breakdown is approximate. For
+comparison, the whole-loop Pallas gradient at <span class="arithmatex">\(B=1\)</span> launched 3 kernels that executed for 0.213 ms of its 0.231 ms
+wall time (about 92%): the GPU spends its time computing, not waiting.</p>
+<p>How much arithmetic could fit in one such interval? Using the RTX 6000 Ada's peak FP32 rate gives</p>
+<div class="arithmatex">\[W = P_{\rm peak}\,c \approx 91.1 \times 10^{12}\ \frac{\mathrm{FLOP}}{\mathrm{s}}
+\times 1.85 \times 10^{-6}\ \mathrm{s} \approx 1.7 \times 10^8\ \mathrm{FLOP}.\]</div>
+<p>This is a peak-throughput yardstick. A tiny kernel doing a fraction of one EKF step uses very little of that
+capacity. The faster the GPU, the more arithmetic is forgone in each microsecond spent on a tiny kernel.
+<a href="https://www.nvidia.com/en-us/products/workstations/rtx-6000/" target="_blank" rel="noopener">NVIDIA RTX 6000 Ada specifications</a></p>
+<p>Dynamax shows both diagnostic signs of a launch-bound loop.</p>
+<ol>
+<li><strong>Batch scaling.</strong> Increasing the batch from 1 to 4,096 sequences increased GPU time by only
+   <span class="arithmatex">\(72.80/59.93 \approx 1.21\times\)</span>. The larger batch put more work into each launch.</li>
+<li><strong>Small-batch CPU performance.</strong> At <span class="arithmatex">\(B=1\)</span>, the CPU finished in 3.39 ms and the GPU in 59.93 ms.
+   The CPU was <span class="arithmatex">\(59.93/3.39 \approx 17.7\times\)</span> faster.</li>
+</ol>
+<figure><img src="example2_pendulum_vs_dynamax/figures/time_vs_batch.png" alt="Time per gradient vs. batch size for the pendulum EKF" loading="lazy"><figcaption>Time per gradient vs. batch size for the pendulum EKF</figcaption></figure>
+<hr />
+<h2 id="3-diagnosis-counting-kernels-with-nvidia-nsight-systems">3. Diagnosis: counting kernels with NVIDIA Nsight Systems</h2>
+<p>Wall-clock time shows <em>that</em> a program is slow. The kernel count shows <em>why</em>. We wrap the calls to be measured in
+<code>cudaProfilerStart</code> / <code>cudaProfilerStop</code> and run:</p>
+<pre class="highlight"><code class="language-bash">nsys profile --capture-range=cudaProfilerApi --capture-range-end=stop \
+             --cuda-graph-trace=node -t cuda -o report  python my_script.py
+nsys stats --report cuda_gpu_kern_sum --format csv report.nsys-rep</code></pre>
+<ul>
+<li><code>--capture-range=cudaProfilerApi</code> records only the region between the two profiler calls, so compilation and
+  warm-up are excluded.</li>
+<li><code>--capture-range-end=stop</code> ends the capture cleanly without terminating the application.</li>
+<li><code>--cuda-graph-trace=node</code> is essential. XLA places some kernels in CUDA graphs, and without this flag nsys reports
+  a whole graph as a single item.</li>
+</ul>
+<p>Summing the kernel table gives kernels per call, GPU-busy time and mean kernel duration. For one loss-and-gradient evaluation of the pendulum EKF (<span class="arithmatex">\(B = 64\)</span> sequences, <span class="arithmatex">\(T = 400\)</span> steps):</p>
+<pre class="highlight"><code>Dynamax                    41,635 kernels/gradient  (104.09 per EKF step)  mean 1.00 us
+JAX natural                18,422 kernels/gradient  ( 46.05 per EKF step)  mean 1.05 us
+JAX lanes                  11,212 kernels/gradient  ( 28.03 per EKF step)  mean 1.05 us
+Pallas: kernel per step     7,612 kernels/gradient  ( 19.03 per EKF step)  mean 1.02 us
+Pallas: whole loop              9 kernels/gradient  (  0.02 per EKF step)  mean 29.48 us</code></pre>
+<p>Dynamax averaged 104.1 kernels per EKF step. Nsight recorded 1.00 µs per kernel on average and 41.70 ms of summed kernel duration per gradient. The unprofiled wall times below also include dispatch and synchronization.</p>
+<p>The kernel count depends on the batch size, because XLA compiles a separate program for every input shape and
+fuses operations differently for <span class="arithmatex">\(B = 1\)</span> than for <span class="arithmatex">\(B = 64\)</span>:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Implementation</th>
+<th style="text-align: right;">Kernels per gradient, <span class="arithmatex">\(B = 1\)</span></th>
+<th style="text-align: right;">Kernels per gradient, <span class="arithmatex">\(B = 64\)</span></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Dynamax</td>
+<td style="text-align: right;">32,427</td>
+<td style="text-align: right;">41,635</td>
+</tr>
+<tr>
+<td>JAX natural</td>
+<td style="text-align: right;">18,822</td>
+<td style="text-align: right;">18,422</td>
+</tr>
+<tr>
+<td>JAX lanes</td>
+<td style="text-align: right;">12,404</td>
+<td style="text-align: right;">11,212</td>
+</tr>
+<tr>
+<td>Pallas: kernel per step</td>
+<td style="text-align: right;">7,204</td>
+<td style="text-align: right;">7,612</td>
+</tr>
+<tr>
+<td>Pallas: whole loop</td>
+<td style="text-align: right;">3</td>
+<td style="text-align: right;">9</td>
+</tr>
+</tbody>
+</table></div>
+<figure><img src="example2_pendulum_vs_dynamax/figures/kernels.png" alt="Kernels per gradient for the pendulum EKF" loading="lazy"><figcaption>Kernels per gradient for the pendulum EKF</figcaption></figure>
+<hr />
+<h2 id="4-method-the-whole-loop-in-one-kernel-with-automatic-differentiation-inside">4. Method: the whole loop in one kernel, with automatic differentiation inside</h2>
+<p>The code in this section is from Experiment 2. Experiment 1 applies the same recipe to the drone's 13-number state.</p>
+<h3 id="41-structure-of-arrays-layout">4.1 Structure-of-arrays layout</h3>
+<p>Instead of a function of one state vector, we write the step with <strong>every scalar replaced by an array over many
+independent problems</strong>. The states of all problems are stored as a 2-D array with <strong>one row per quantity and one
+column per problem</strong> (a "structure of arrays"). The EKF state has five quantities, so</p>
+<div class="arithmatex">\[\text{state} = \begin{bmatrix} m_0^{(1)} &amp; m_0^{(2)} &amp; \cdots &amp; m_0^{(B)} \\[8pt] m_1^{(1)} &amp; m_1^{(2)} &amp; \cdots &amp; m_1^{(B)} \\[8pt] p_{00}^{(1)} &amp; p_{00}^{(2)} &amp; \cdots &amp; p_{00}^{(B)} \\[8pt] p_{01}^{(1)} &amp; p_{01}^{(2)} &amp; \cdots &amp; p_{01}^{(B)} \\[8pt] p_{11}^{(1)} &amp; p_{11}^{(2)} &amp; \cdots &amp; p_{11}^{(B)} \end{bmatrix} \in \mathbb{R}^{5 \times B}.\]</div>
+<p>Matrix formulas are written out entry by entry, so every operation acts on whole rows at once. For example, the
+covariance prediction <span class="arithmatex">\(P' = F P F^\top + Q\)</span> becomes</p>
+<div class="arithmatex">\[p_{00}' = f_{00}^2\,p_{00} + 2 f_{00} f_{01}\,p_{01} + f_{01}^2\,p_{11} + Q_{00},\]</div>
+<p>where every symbol is an array over the <span class="arithmatex">\(B\)</span> problems. In the same way the 2×2 covariance becomes three rows
+<span class="arithmatex">\((p_{00}, p_{01}, p_{11})\)</span> and a quaternion becomes four rows. The implementations called "JAX lanes" use this layout.</p>
+<p>The code remains ordinary <code>jax.numpy</code> and runs in plain JAX (function <code>ekf_step_lanes</code>):</p>
+<pre class="highlight"><code class="language-python">def ekf_step_lanes(lanes):
+    m0, m1, p00, p01, p11, y, g, r = lanes                    # each an array over sequences
+    one, zero = jnp.ones_like(m0), jnp.zeros_like(m0)
+    y_hat, h0 = jax.jvp(sensor, (m0,), (one,))                # H = dh/dx, by autodiff
+    S = h0 * p00 * h0 + r * r
+    ...
+    (n0, n1), (f00, f10) = jax.jvp(f, (m0, m1), (one, zero))  # columns of F = df/dx, by autodiff
+    _, (f01, f11) = jax.jvp(f, (m0, m1), (zero, one))
+    ...</code></pre>
+<p>On its own this layout reduces the kernel count only modestly (18,422 → 11,212). Its purpose is that it is exactly
+the shape a GPU kernel expects, so the same function can run <strong>inside</strong> a kernel.</p>
+<h3 id="42-the-whole-loop-inside-one-forward-kernel">4.2 The whole loop inside one forward kernel</h3>
+<p>A Pallas kernel body is ordinary JAX code, including <code>lax.fori_loop</code>. All <span class="arithmatex">\(T\)</span> time steps therefore run inside one
+kernel, with the state held in registers. Each program instance processes a block of 32 columns, that is, 32
+problems (function <code>make_filter_op</code>):</p>
+<pre class="highlight"><code class="language-python">def forward_kernel(ys_ref, g_ref, r_ref, ll_ref, saved_ref):
+    g, r = g_ref[0, :], r_ref[0, :]
+    def body(t, carry):
+        state, ll_sum = carry
+        for k in range(5):                                    # keep the state for the backward pass
+            saved_ref[t, k, :] = state[k]
+        *state, ll = ekf_step_lanes((*state, ys_ref[t, :], g, r))
+        return tuple(state), ll_sum + ll
+    _, ll_sum = jax.lax.fori_loop(0, T, body, (initial_lanes(block), jnp.zeros_like(g)))
+    ll_ref[0, :] = ll_sum</code></pre>
+<p>The starting state of every step, <span class="arithmatex">\(s_k\)</span>, is written to GPU memory. This costs <span class="arithmatex">\(T \times n_s\)</span> numbers per problem and
+is all the backward pass needs.</p>
+<h3 id="43-the-backward-kernel-with-jaxvjp-inside">4.3 The backward kernel, with <code>jax.vjp</code> inside</h3>
+<p><code>jax.grad</code> cannot differentiate through a <code>pallas_call</code>. We therefore write the backward pass as a second kernel that
+walks the steps in reverse. Writing <span class="arithmatex">\(\bar s_k = \partial L / \partial s_k\)</span> for the cotangent of the state, the
+reverse recursion is</p>
+<div class="arithmatex">\[\bar s_k = \Big(\frac{\partial \Phi}{\partial s}\Big|_{s_k}\Big)^{\!\top} \bar s_{k+1} + \frac{\partial \ell_k}{\partial s_k},
+\qquad \bar\theta \mathrel{+}= \Big(\frac{\partial \Phi}{\partial \theta}\Big|_{s_k}\Big)^{\!\top} \bar s_{k+1} + \frac{\partial \ell_k}{\partial \theta}.\]</div>
+<p>Both vector-Jacobian products are obtained by calling <strong><code>jax.vjp</code> of the same step function inside the kernel</strong>. JAX
+generates the derivative code and Pallas compiles it like any other code:</p>
+<pre class="highlight"><code class="language-python">def backward_kernel(ys_ref, g_ref, r_ref, saved_ref, ll_bar_ref, g_bar_ref, r_bar_ref):
+    def body(i, carry):
+        t = T - 1 - i                                         # backwards in time
+        state_bar, g_bar, r_bar = carry
+        lanes = (*(saved_ref[t, k, :] for k in range(5)), ys_ref[t, :], g, r)
+        _, pullback = jax.vjp(ekf_step_lanes, lanes)          # autodiff INSIDE the kernel
+        (lanes_bar,) = pullback((*state_bar, ll_bar))
+        return tuple(lanes_bar[:5]), g_bar + lanes_bar[6], r_bar + lanes_bar[7]
+    ...</code></pre>
+<p>Because <code>ekf_step_lanes</code> already contains <code>jax.jvp</code> (for the Jacobians <span class="arithmatex">\(F\)</span> and <span class="arithmatex">\(H\)</span>), the backward kernel contains a
+<strong>second-order derivative</strong>, a <code>vjp</code> of a <code>jvp</code>, that is never written by hand. The same construction extends to any
+order <span class="arithmatex">\(d + 1\)</span>.</p>
+<h3 id="44-integration-with-jaxgrad-via-jaxcustom_vjp">4.4 Integration with <code>jax.grad</code> via <code>jax.custom_vjp</code></h3>
+<p><code>jax.custom_vjp</code> connects the two kernels, so the rest of the program (<code>jax.value_and_grad</code>, <code>optax</code>) is unchanged:</p>
+<pre class="highlight"><code class="language-python">@jax.custom_vjp
+def op(ys, g, r):
+    return run_forward(ys, g, r)[0]
+
+def op_fwd(ys, g, r):
+    ll, saved = run_forward(ys, g, r)
+    return ll, (ys, g, r, saved)
+
+def op_bwd(residuals, ll_bar):
+    g_bar, r_bar = run_backward(*residuals, ll_bar)
+    return jnp.zeros_like(residuals[0]), g_bar, r_bar
+
+op.defvjp(op_fwd, op_bwd)</code></pre>
+<p>For steps too large for a whole-loop kernel, the repository packages Sections 4.1, 4.3 and 4.4 as a generic "one fused kernel per step" helper (<code>make_row_op</code>, about 60 lines).</p>
+<h3 id="45-summary-of-the-recipe">4.5 Summary of the recipe</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>step</th>
+<th>what it does</th>
+<th>kernels per gradient</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>natural JAX (<code>vmap</code> + <code>lax.scan</code>)</td>
+<td>one XLA loop, many kernels per step</td>
+<td><span class="arithmatex">\(\mathcal O(10\text{–}100) \times T\)</span></td>
+</tr>
+<tr>
+<td>structure-of-arrays layout (4.1)</td>
+<td>same maths, kernel-friendly shape</td>
+<td>slightly fewer</td>
+</tr>
+<tr>
+<td>whole loop in one kernel (4.2)</td>
+<td>forward pass in one launch</td>
+<td>1 forward</td>
+</tr>
+<tr>
+<td>in-kernel <code>jax.vjp</code> (4.3) + <code>custom_vjp</code> (4.4)</td>
+<td>backward pass in one launch, any derivative order</td>
+<td>1 backward (+ a few small kernels)</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="5-experiment-1-vs-nvidia-warp-drone-model-predictive-control">5. Experiment 1 — vs. NVIDIA Warp: drone model-predictive control</h2>
+<p><strong>Source.</strong> Newton's official example
+<a href="https://github.com/newton-physics/newton/tree/main/newton/examples/diffsim" target="_blank" rel="noopener"><code>example_diffsim_drone.py</code></a>, built on
+<a href="https://github.com/NVIDIA/warp" target="_blank" rel="noopener">NVIDIA Warp</a>. A quadrotor must fly to a target next to a pole. Its propeller commands
+are improved by gradient descent through a 30-step simulation, for 16 rollouts at once.</p>
+<ul>
+<li><strong>Part A</strong> is the example as published. The objective contains no derivatives (<span class="arithmatex">\(d = 0\)</span>), so training needs
+  first-order gradients, which is exactly what Warp is designed for.</li>
+<li><strong>Part B</strong> adds an uncertainty term propagated with the simulator's Jacobian (<span class="arithmatex">\(d = 1\)</span>). Training now needs a
+  derivative of a derivative, which released Warp does not provide automatically.</li>
+</ul>
+<h3 id="51-dynamics">5.1 Dynamics</h3>
+<p>The drone is one rigid body with mass <span class="arithmatex">\(m = 0.56\)</span> kg and inertia <span class="arithmatex">\(I = \mathrm{diag}(0.00376,\ 0.00376,\ 0.00749)\)</span>
+kg m². Its four propellers sit at <span class="arithmatex">\(p_i \in \{(0, \pm 0.2, 0),\ (\pm 0.2, 0, 0)\}\)</span> m. The state has 13 numbers:
+position <span class="arithmatex">\(x\)</span>, orientation quaternion <span class="arithmatex">\(q\)</span> (rotation matrix <span class="arithmatex">\(R(q)\)</span>), velocity <span class="arithmatex">\(v\)</span> and angular velocity <span class="arithmatex">\(\omega\)</span>.</p>
+<p><strong>Controls.</strong> Each propeller has 4 control points <span class="arithmatex">\(c_{j,i}\)</span> over the 30-step horizon, one every 10 steps. The command
+at step <span class="arithmatex">\(k\)</span> is a piecewise-linear interpolation with "hat" weights, scaled by a gain of 0.8:</p>
+<div class="arithmatex">\[u_i(k) = 0.8 \sum_{j=0}^{3} \max\!\big(0,\ 1 - |k/10 - j|\big)\, c_{j,i}.\]</div>
+<p><strong>Forces and torques.</strong> Propeller <span class="arithmatex">\(i\)</span> produces thrust <span class="arithmatex">\(T u_i\)</span> along the body <span class="arithmatex">\(z\)</span> axis (<span class="arithmatex">\(T = 4.18\)</span> N) and drag torque
+<span class="arithmatex">\(\pm M u_i\)</span> (<span class="arithmatex">\(M = 0.0556\)</span> N m), with spin directions <span class="arithmatex">\(s = (-1, 1, 1, -1)\)</span>. Newton scales the torques by 0.8:</p>
+<div class="arithmatex">\[F = R\, e_z\, T \sum_i u_i, \qquad \tau_b = 0.8 \Big(\sum_i p_i \times e_z\, T u_i \;+\; e_z\, M \sum_i s_i u_i\Big).\]</div>
+<p><strong>Integration.</strong> One step of Newton's <code>SolverSemiImplicit</code>, with <span class="arithmatex">\(\Delta t = 1/60\)</span> s, gravity <span class="arithmatex">\(g = -9.81\,e_z\)</span> and
+angular damping 0.05:</p>
+<div class="arithmatex">\[v_{k+1} = v_k + \Big(\frac{F}{m} + g\Big)\Delta t, \qquad x_{k+1} = x_k + v_{k+1}\,\Delta t,\]</div>
+<div class="arithmatex">\[\omega_b = R^\top\omega_k, \qquad \omega_b \leftarrow \omega_b + I^{-1}\big(\tau_b - \omega_b \times I\omega_b\big)\Delta t, \qquad \omega^+ = R\,\omega_b,\]</div>
+<div class="arithmatex">\[q_{k+1} = \mathrm{normalise}\Big(q_k + \tfrac12\,\Delta t\, (\omega^+, 0) \otimes q_k\Big), \qquad \omega_{k+1} = (1 - 0.05\,\Delta t)\, \omega^+.\]</div>
+<p>Our step function (<code>simulate_step</code>) is a line-by-line port of Newton's
+<code>integrate_rigid_body</code> and <code>compute_prop_wrenches</code>.</p>
+<h3 id="52-objective-part-a">5.2 Objective (Part A)</h3>
+<p>After each step <span class="arithmatex">\(k = 0, \dots, 29\)</span>, Newton's <code>drone_cost</code> and <code>collision_cost</code> give</p>
+<div class="arithmatex">\[c_k = \frac{10^3}{\textstyle\sum w}\, \gamma_k \Big( 1000\,\lVert x - x^\star\rVert^2 + 100\, a(x_z) + 0.05\,\lVert u\rVert^2 + 0.1\,(\lVert v\rVert^2 + \lVert\omega\rVert^2) + 10\,(1 - e_z^\top R e_z) \Big) + 10^4 \max(0,\ 0.2 - d_{\text{pole}}).\]</div>
+<p>The terms are:</p>
+<ul>
+<li>target <span class="arithmatex">\(x^\star = (1, 0, 0.5)\)</span>;</li>
+<li>altitude penalty <span class="arithmatex">\(a(z) = \max(z - 0.75, 0) + \max(0.25 - z, 0)\)</span>;</li>
+<li>discount <span class="arithmatex">\(\gamma_k = 0.8^{29 - k}/30^2\)</span>;</li>
+<li><span class="arithmatex">\(d_{\text{pole}}\)</span>, the distance from the drone to a vertical capsule of radius 0.15 m.</li>
+</ul>
+<p>Model-predictive control needs, at every optimisation step,</p>
+<div class="arithmatex">\[\nabla_c L, \qquad L = \sum_{b=1}^{B} \sum_{k=0}^{29} c_k^{(b)}.\]</div>
+<h3 id="53-part-b-an-uncertainty-aware-objective-with-a-jacobian-inside">5.3 Part B: an uncertainty-aware objective with a Jacobian inside</h3>
+<p>The drone does not know its initial tilt exactly. A small tilt error <span class="arithmatex">\(\delta_0\)</span> of 0.05 rad about <span class="arithmatex">\(x\)</span>, <span class="arithmatex">\(y\)</span> or <span class="arithmatex">\(z\)</span>
+propagates along the rollout through the <strong>linearised</strong> dynamics:</p>
+<div class="arithmatex">\[\delta_{k+1} = F_k\,\delta_k, \qquad F_k = \frac{\partial\, \Phi}{\partial\, s}\Big|_{(s_k,\ u_k)}.\]</div>
+<p>This is the covariance propagation of an extended Kalman filter, <span class="arithmatex">\(P_{k+1} = F_k P_k F_k^\top\)</span> with
+<span class="arithmatex">\(P_0 = \sum_j \delta_{0j}\delta_{0j}^\top\)</span>. We penalise the spread of the position:</p>
+<div class="arithmatex">\[c_k \mathrel{+}= 100\, \operatorname{tr}\big(P_k[x, x]\big) = 100 \sum_{j=1}^{3} \lVert \delta_{kj}[x] \rVert^2 .\]</div>
+<p>The gradient <span class="arithmatex">\(\nabla_c L\)</span> now requires <span class="arithmatex">\(\partial F_k / \partial c\)</span>, <strong>the derivative of a Jacobian</strong>: second-order
+automatic differentiation through 30 steps.</p>
+<ul>
+<li><strong>JAX:</strong> <code>jax.jacfwd</code> (natural form) or <code>jax.jvp</code> (structure-of-arrays form). <code>jax.grad</code> differentiates it again automatically.</li>
+<li><strong>Pallas:</strong> one problem (column) per pair (rollout <span class="arithmatex">\(b\)</span>, error direction <span class="arithmatex">\(j\)</span>). Each column carries the state and
+  <strong>one</strong> tangent
+  <span class="arithmatex">\(\delta_{kj}\)</span>, and advances both with a single <code>jax.jvp</code> inside the forward kernel. The backward kernel applies
+  <code>jax.vjp</code> to it, so the second-order derivative is generated inside the kernel.</li>
+<li><strong>Warp (release 1.19):</strong> reverse mode only. <code>wp.Tape</code> cannot differentiate a gradient or a Jacobian again. The
+  product <span class="arithmatex">\(F_k\,\delta\)</span> (quaternion product, normalisation, gyroscopic term) would have to be written by hand and
+  then differentiated by Warp. Warp's development branch contains an <em>experimental</em> forward mode ("jets",
+  <code>wp.JetSpace</code>), which may make this possible in a future release.</li>
+</ul>
+<h3 id="54-implementations">5.4 Implementations</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>implementation</th>
+<th>description</th>
+<th>kernels per optimisation step</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Newton example (Warp)</td>
+<td>the official code, timed through its captured CUDA graph</td>
+<td>393</td>
+</tr>
+<tr>
+<td>Warp (ours)</td>
+<td>same physics; one fused kernel per step, <code>wp.Tape</code>, CUDA graph</td>
+<td>30 forward + 30 adjoint</td>
+</tr>
+<tr>
+<td>JAX natural</td>
+<td>small vectors, <code>vmap</code>, <code>lax.scan</code></td>
+<td>thousands</td>
+</tr>
+<tr>
+<td>JAX lanes</td>
+<td>structure-of-arrays layout, <code>lax.scan</code></td>
+<td>fewer thousands</td>
+</tr>
+<tr>
+<td><strong>Pallas whole rollout</strong></td>
+<td>one kernel for the rollout, one for its backward pass (<code>jax.vjp</code> inside)</td>
+<td>single digits</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="55-correctness">5.5 Correctness</h3>
+<p><span class="arithmatex">\(B = 16\)</span>; float32 on the RTX 6000 Ada compared with a float64 CPU reference:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>implementation</th>
+<th>Part A: objective rel. error</th>
+<th>Part A: gradient rel. error</th>
+<th>Part B: objective rel. error</th>
+<th>Part B: gradient rel. error</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>JAX natural</td>
+<td>5.5e-07</td>
+<td>3.0e-07</td>
+<td>7.4e-07</td>
+<td>5.3e-07</td>
+</tr>
+<tr>
+<td>JAX lanes</td>
+<td>7.7e-07</td>
+<td>4.6e-07</td>
+<td>7.4e-07</td>
+<td>2.1e-07</td>
+</tr>
+<tr>
+<td>Pallas whole rollout</td>
+<td>6.6e-07</td>
+<td>4.6e-07</td>
+<td>8.5e-07</td>
+<td>1.9e-07</td>
+</tr>
+<tr>
+<td>Warp (ours)</td>
+<td>1.8e-06</td>
+<td>4.8e-07</td>
+<td>–</td>
+<td>–</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="56-performance-part-a-first-order-gradient">5.6 Performance, Part A (first-order gradient)</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Implementation</th>
+<th style="text-align: right;">Kernels per gradient (B = 16)</th>
+<th style="text-align: right;">ms, B = 16</th>
+<th style="text-align: right;">ms, B = 256</th>
+<th style="text-align: right;">ms, B = 4096</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Newton example (Warp)</td>
+<td style="text-align: right;">393</td>
+<td style="text-align: right;">0.917</td>
+<td style="text-align: right;">1.25</td>
+<td style="text-align: right;">1.91</td>
+</tr>
+<tr>
+<td>Warp (ours)</td>
+<td style="text-align: right;">61</td>
+<td style="text-align: right;">0.162</td>
+<td style="text-align: right;">0.294</td>
+<td style="text-align: right;">0.302</td>
+</tr>
+<tr>
+<td>JAX natural</td>
+<td style="text-align: right;">2,566</td>
+<td style="text-align: right;">2.79</td>
+<td style="text-align: right;">3.23</td>
+<td style="text-align: right;">3.84</td>
+</tr>
+<tr>
+<td>JAX lanes</td>
+<td style="text-align: right;">1,839</td>
+<td style="text-align: right;">2.38</td>
+<td style="text-align: right;">2.38</td>
+<td style="text-align: right;">2.51</td>
+</tr>
+<tr>
+<td><strong>Pallas whole rollout</strong></td>
+<td style="text-align: right;">6</td>
+<td style="text-align: right;">0.056</td>
+<td style="text-align: right;">0.066</td>
+<td style="text-align: right;">0.066</td>
+</tr>
+</tbody>
+</table></div>
+<p>At B = 16, Pallas was 2.9× faster than fused Warp and 16.5× faster than Newton’s example.</p>
+<figure><img src="example1_drone_vs_warp/figures/trajectory.png" alt="Optimised drone trajectory" loading="lazy"><figcaption>Optimised drone trajectory</figcaption></figure>
+<figure><img src="example1_drone_vs_warp/figures/kernels.png" alt="Kernels per optimisation step, Part A" loading="lazy"><figcaption>Kernels per optimisation step, Part A</figcaption></figure>
+<figure><img src="example1_drone_vs_warp/figures/time_vs_batch.png" alt="Time per optimisation step vs. batch size, Part A" loading="lazy"><figcaption>Time per optimisation step vs. batch size, Part A</figcaption></figure>
+<h3 id="57-performance-part-b-second-order-gradient">5.7 Performance, Part B (second-order gradient)</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Implementation</th>
+<th style="text-align: right;">Kernels per gradient (B = 16)</th>
+<th style="text-align: right;">ms, B = 16</th>
+<th style="text-align: right;">ms, B = 256</th>
+<th style="text-align: right;">ms, B = 4096</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Warp 1.19 (requires a hand-written Jacobian)</td>
+<td style="text-align: right;">–</td>
+<td style="text-align: right;">–</td>
+<td style="text-align: right;">–</td>
+<td style="text-align: right;">–</td>
+</tr>
+<tr>
+<td>JAX natural</td>
+<td style="text-align: right;">4,801</td>
+<td style="text-align: right;">5.91</td>
+<td style="text-align: right;">6.92</td>
+<td style="text-align: right;">15.39</td>
+</tr>
+<tr>
+<td>JAX lanes</td>
+<td style="text-align: right;">2,925</td>
+<td style="text-align: right;">4.56</td>
+<td style="text-align: right;">4.96</td>
+<td style="text-align: right;">5.33</td>
+</tr>
+<tr>
+<td><strong>Pallas whole rollout</strong></td>
+<td style="text-align: right;">8</td>
+<td style="text-align: right;">0.096</td>
+<td style="text-align: right;">0.085</td>
+<td style="text-align: right;">0.184</td>
+</tr>
+</tbody>
+</table></div>
+<p>At B = 16, Pallas took 0.096 ms for the uncertainty-aware gradient, a 61.9× speedup over natural JAX. At B = 16 the first synchronized evaluation, including compilation, took 8.8 s for natural JAX, 3.3 s for JAX lanes, 5.7 s for Pallas.</p>
+<figure><img src="example1_drone_vs_warp/figures/kernels_uncertainty.png" alt="Kernels per optimisation step, Part B" loading="lazy"><figcaption>Kernels per optimisation step, Part B</figcaption></figure>
+<figure><img src="example1_drone_vs_warp/figures/time_vs_batch_uncertainty.png" alt="Time per optimisation step vs. batch size, Part B" loading="lazy"><figcaption>Time per optimisation step vs. batch size, Part B</figcaption></figure>
+<hr />
+<h2 id="6-experiment-2-vs-dynamax-learning-a-pendulum-through-an-extended-kalman-filter">6. Experiment 2 — vs. Dynamax: learning a pendulum through an extended Kalman filter</h2>
+<p><strong>Source.</strong> The pendulum in <a href="https://github.com/probml/dynamax" target="_blank" rel="noopener">Dynamax</a>'s own EKF notebook
+(<code>ekf_ukf_pendulum.ipynb</code>, after Särkkä, <em>Bayesian Filtering and Smoothing</em>, Example 3.7). We go one step beyond the
+notebook. Instead of only filtering, we <strong>learn</strong> the gravity <span class="arithmatex">\(g\)</span> and the sensor noise <span class="arithmatex">\(r\)</span> by gradient descent on the
+EKF log-likelihood.</p>
+<h3 id="61-model">6.1 Model</h3>
+<p>The state is the angle and angular velocity, <span class="arithmatex">\(x = [\alpha,\ \dot\alpha]\)</span>, with time step <span class="arithmatex">\(\Delta t = 0.0125\)</span> s:</p>
+<div class="arithmatex">\[x_{k+1} = f(x_k) + q_k, \qquad f(x) = \begin{bmatrix} \alpha + \dot\alpha\,\Delta t \\ \dot\alpha - g \sin\alpha\,\Delta t \end{bmatrix}, \qquad q_k \sim \mathcal N(0, Q),\]</div>
+<div class="arithmatex">\[y_k = h(x_k) + r_k, \qquad h(x) = \sin\alpha, \qquad r_k \sim \mathcal N(0, r^2),\]</div>
+<p>with process noise from a continuous white-noise acceleration of intensity <span class="arithmatex">\(q_c = 1\)</span>:</p>
+<div class="arithmatex">\[Q = q_c \begin{bmatrix} \Delta t^3/3 &amp; \Delta t^2/2 \\ \Delta t^2/2 &amp; \Delta t \end{bmatrix}.\]</div>
+<p>The true values are <span class="arithmatex">\(g = 9.8\)</span> and <span class="arithmatex">\(r = 0.3\)</span>. Each sequence has <span class="arithmatex">\(T = 400\)</span> steps (5 s) and starts at
+<span class="arithmatex">\(x_0 = [\pi/2,\ 0]\)</span>.</p>
+<figure><img src="example2_pendulum_vs_dynamax/figures/pendulum_data.png" alt="Simulated pendulum data" loading="lazy"><figcaption>Simulated pendulum data</figcaption></figure>
+<h3 id="62-one-step-of-the-extended-kalman-filter">6.2 One step of the extended Kalman filter</h3>
+<p>The filter maintains a Gaussian belief <span class="arithmatex">\(\mathcal N(m_k, P_k)\)</span>. It uses Dynamax's order (measure, update, predict)
+and the Jacobians <span class="arithmatex">\(H = \partial h / \partial x\)</span> and <span class="arithmatex">\(F = \partial f / \partial x\)</span>:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>quantity</th>
+<th>formula</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>innovation variance</td>
+<td><span class="arithmatex">\(S = H P H^\top + r^2\)</span></td>
+<td>uncertainty of the next measurement</td>
+</tr>
+<tr>
+<td>innovation</td>
+<td><span class="arithmatex">\(e = y - h(m)\)</span></td>
+<td>measurement minus prediction</td>
+</tr>
+<tr>
+<td>log-likelihood</td>
+<td><span class="arithmatex">\(\ell = -\tfrac12\left(\log 2\pi S + e^2 / S\right)\)</span></td>
+<td>how well the model predicted <span class="arithmatex">\(y\)</span></td>
+</tr>
+<tr>
+<td>gain</td>
+<td><span class="arithmatex">\(K = P H^\top / S\)</span></td>
+<td>weight given to the measurement</td>
+</tr>
+<tr>
+<td>update</td>
+<td><span class="arithmatex">\(m \leftarrow m + K e\)</span>, <span class="arithmatex">\(\;P \leftarrow P - K S K^\top\)</span></td>
+<td>belief after observing <span class="arithmatex">\(y\)</span></td>
+</tr>
+<tr>
+<td>predict</td>
+<td><span class="arithmatex">\(m \leftarrow f(m)\)</span>, <span class="arithmatex">\(\;P \leftarrow F P F^\top + Q\)</span></td>
+<td>belief for the next step</td>
+</tr>
+</tbody>
+</table></div>
+<p>For the pendulum, <span class="arithmatex">\(H = [\cos\alpha,\ 0]\)</span> and</p>
+<div class="arithmatex">\[F = \begin{bmatrix} 1 &amp; \Delta t \\ -g\cos\alpha\,\Delta t &amp; 1 \end{bmatrix}.\]</div>
+<p>These Jacobians are never written by hand. As in Dynamax (<code>F, H = jacfwd(f), jacfwd(h)</code>), they come from
+<code>jax.jacfwd</code> in the natural implementation and from <code>jax.jvp</code> in the structure-of-arrays implementation.</p>
+<h3 id="63-training-objective-and-why-it-is-second-order">6.3 Training objective and why it is second order</h3>
+<p>The loss is the negative log-likelihood per measurement, averaged over <span class="arithmatex">\(B\)</span> sequences:</p>
+<div class="arithmatex">\[L(g, r) = -\frac{1}{B\,T} \sum_{b=1}^{B} \sum_{k=1}^{T} \ell_k^{(b)}(g, r).\]</div>
+<p>The chain of dependencies runs <span class="arithmatex">\(\ell_k \leftarrow S_k \leftarrow P_k \leftarrow F_{k-1}, F_{k-2}, \dots\)</span>, so the
+gradient <span class="arithmatex">\(\partial L / \partial g\)</span> contains <span class="arithmatex">\(\partial F_j / \partial g\)</span>, <strong>the derivative of a Jacobian</strong>. One
+derivative sits inside the forward computation (<span class="arithmatex">\(d = 1\)</span>), and training needs automatic differentiation of order
+<span class="arithmatex">\(d + 1 = 2\)</span> through 400 sequential steps.</p>
+<h3 id="64-implementations">6.4 Implementations</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>implementation</th>
+<th>description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Dynamax</td>
+<td><code>extended_kalman_filter(...).marginal_loglik</code> (baseline)</td>
+</tr>
+<tr>
+<td>JAX natural</td>
+<td>the same filter written directly: <code>jax.jacfwd</code>, <code>lax.scan</code></td>
+</tr>
+<tr>
+<td>JAX lanes</td>
+<td>structure-of-arrays layout (Section 4.1), <code>lax.scan</code></td>
+</tr>
+<tr>
+<td>Pallas, kernel per step</td>
+<td>one fused kernel per EKF step (the generic helper of Section 4.4)</td>
+</tr>
+<tr>
+<td><strong>Pallas, whole loop</strong></td>
+<td>the whole filter in one forward and one backward kernel (Sections 4.2–4.4)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="65-correctness">6.5 Correctness</h3>
+<p><span class="arithmatex">\(B = 64\)</span>; float32 on the RTX 6000 Ada compared with a float64 CPU reference:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>implementation</th>
+<th>loss relative error</th>
+<th>gradient relative error</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Dynamax</td>
+<td>7.6e-08</td>
+<td>3.4e-04</td>
+</tr>
+<tr>
+<td>JAX natural</td>
+<td>7.6e-08</td>
+<td>1.3e-05</td>
+</tr>
+<tr>
+<td>JAX lanes</td>
+<td>1.1e-08</td>
+<td>4.7e-05</td>
+</tr>
+<tr>
+<td>Pallas, kernel per step</td>
+<td>1.1e-08</td>
+<td>4.8e-05</td>
+</tr>
+<tr>
+<td>Pallas, whole loop</td>
+<td>1.1e-08</td>
+<td>4.8e-05</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="66-performance">6.6 Performance</h3>
+<p>Milliseconds per loss-and-gradient evaluation, <span class="arithmatex">\(T = 400\)</span> on the RTX 6000 Ada and Threadripper CPU.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th style="text-align: right;">B</th>
+<th style="text-align: right;">Dynamax GPU</th>
+<th style="text-align: right;">Dynamax CPU</th>
+<th style="text-align: right;">JAX natural GPU</th>
+<th style="text-align: right;">JAX natural CPU</th>
+<th style="text-align: right;">JAX lanes GPU</th>
+<th style="text-align: right;">Pallas per step</th>
+<th style="text-align: right;"><strong>Pallas whole loop</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: right;">1</td>
+<td style="text-align: right;">59.93</td>
+<td style="text-align: right;">3.39</td>
+<td style="text-align: right;">20.21</td>
+<td style="text-align: right;">1.33</td>
+<td style="text-align: right;">13.54</td>
+<td style="text-align: right;">6.90</td>
+<td style="text-align: right;">0.231</td>
+</tr>
+<tr>
+<td style="text-align: right;">16</td>
+<td style="text-align: right;">65.30</td>
+<td style="text-align: right;">8.15</td>
+<td style="text-align: right;">21.39</td>
+<td style="text-align: right;">1.43</td>
+<td style="text-align: right;">12.76</td>
+<td style="text-align: right;">6.96</td>
+<td style="text-align: right;">0.274</td>
+</tr>
+<tr>
+<td style="text-align: right;">256</td>
+<td style="text-align: right;">63.97</td>
+<td style="text-align: right;">84.13</td>
+<td style="text-align: right;">22.79</td>
+<td style="text-align: right;">11.51</td>
+<td style="text-align: right;">14.23</td>
+<td style="text-align: right;">7.84</td>
+<td style="text-align: right;">0.282</td>
+</tr>
+<tr>
+<td style="text-align: right;">4096</td>
+<td style="text-align: right;">72.80</td>
+<td style="text-align: right;">–</td>
+<td style="text-align: right;">27.15</td>
+<td style="text-align: right;">–</td>
+<td style="text-align: right;">15.05</td>
+<td style="text-align: right;">8.57</td>
+<td style="text-align: right;">0.289</td>
+</tr>
+</tbody>
+</table></div>
+<p>Pallas gave a 259.9× speedup over Dynamax at B = 1 and 251.9× at B = 4,096.</p>
+<p>The first GPU gradient call includes JAX tracing, compilation and one synchronized execution. The speedups above use subsequent warmed calls. JAX compiles Pallas kernels inside XLA and keeps no compilation cache on disk by default (JAX's persistent compilation cache was disabled), so every first call below is a cold compile.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th style="text-align: right;">Batch size</th>
+<th style="text-align: right;">Dynamax first call (s)</th>
+<th style="text-align: right;">Pallas whole-loop first call (s)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: right;">1</td>
+<td style="text-align: right;">1.107</td>
+<td style="text-align: right;">0.148</td>
+</tr>
+<tr>
+<td style="text-align: right;">16</td>
+<td style="text-align: right;">1.317</td>
+<td style="text-align: right;">0.199</td>
+</tr>
+<tr>
+<td style="text-align: right;">256</td>
+<td style="text-align: right;">1.378</td>
+<td style="text-align: right;">0.206</td>
+</tr>
+<tr>
+<td style="text-align: right;">4,096</td>
+<td style="text-align: right;">1.366</td>
+<td style="text-align: right;">0.221</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="67-parameter-learning">6.7 Parameter learning</h3>
+<p>300 Adam steps (learning rate 0.05), 16 sequences, starting from <span class="arithmatex">\((g, r) = (8.0, 0.4)\)</span>:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Implementation</th>
+<th>Device</th>
+<th style="text-align: right;">Wall time for 300 steps</th>
+<th>Final <span class="arithmatex">\((g, r)\)</span></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Dynamax</td>
+<td>GPU</td>
+<td style="text-align: right;">19.37 s</td>
+<td>(9.5044, 0.2991)</td>
+</tr>
+<tr>
+<td>JAX natural</td>
+<td>CPU</td>
+<td style="text-align: right;">0.542 s</td>
+<td>(9.5044, 0.2991)</td>
+</tr>
+<tr>
+<td>Pallas: whole loop</td>
+<td>GPU</td>
+<td style="text-align: right;">0.098 s</td>
+<td>(9.5044, 0.2991)</td>
+</tr>
+</tbody>
+</table></div>
+<p>All three implementations follow the same optimisation path and reach the same maximum-likelihood estimate. The true
+values are <span class="arithmatex">\((9.8, 0.3)\)</span>; sixteen five-second sequences do not determine <span class="arithmatex">\(g\)</span> more precisely.</p>
+<figure><img src="example2_pendulum_vs_dynamax/figures/fit_gravity.png" alt="Learning g and r" loading="lazy"><figcaption>Learning g and r</figcaption></figure>
+<hr />
+<h2 id="7-scope-where-higher-order-differentiation-arises">7. Scope: where higher-order differentiation arises</h2>
+<h3 id="71-overview">7.1 Overview</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th><span class="arithmatex">\(d\)</span></th>
+<th>examples</th>
+<th>Warp (released)</th>
+<th>JAX + Pallas</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>rollout objectives, trajectory optimisation (Part A)</td>
+<td>✅ designed for it</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>≥ 1</td>
+<td>Kalman filters (Jacobian <span class="arithmatex">\(F\)</span>), force fields (<span class="arithmatex">\(f = -\nabla E\)</span>), physics-informed losses (<span class="arithmatex">\(u_{xx}\)</span>), DDP / iLQR, sensitivities in quantitative finance, Hamiltonian models (<span class="arithmatex">\(\nabla H\)</span>)</td>
+<td>inner derivatives written by hand</td>
+<td>✅ automatic</td>
+</tr>
+</tbody>
+</table></div>
+<p>Fields where <span class="arithmatex">\(d \ge 1\)</span> is routine:</p>
+<ul>
+<li>molecular dynamics and materials modelling;</li>
+<li>state estimation for vehicles, drones and batteries;</li>
+<li>scientific machine learning and PDEs;</li>
+<li>data assimilation in weather and climate;</li>
+<li>quantitative finance.</li>
+</ul>
+<h3 id="72-governing-equations-by-domain">7.2 Governing equations by domain</h3>
+<p>Recall: <span class="arithmatex">\(d\)</span> is the number of derivatives inside the forward computation, and training needs automatic differentiation
+of order <span class="arithmatex">\(d+1\)</span>. In each row, the inner derivative is shown in bold.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>domain</th>
+<th>governing equations (the inner derivative is in bold)</th>
+<th><span class="arithmatex">\(d\)</span> → order for training</th>
+<th>what released Warp (1.19) requires</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Molecular dynamics, ML force fields</td>
+<td><span class="arithmatex">\(\mathbf{f = -\nabla_x E_\theta(x)}\)</span>, with loss <span class="arithmatex">\(L = \sum \lVert -\nabla_x E_\theta - f^{\text{ref}} \rVert^2\)</span></td>
+<td><span class="arithmatex">\(d=1\)</span> → 2 (needs <span class="arithmatex">\(\nabla_\theta \nabla_x E_\theta\)</span>)</td>
+<td>The Tape cannot differentiate a gradient. <span class="arithmatex">\(\nabla_x E_\theta\)</span> must be written by hand as its own kernel. Large equivariant networks also live outside Warp.</td>
+</tr>
+<tr>
+<td>State estimation (EKF), §6</td>
+<td><span class="arithmatex">\(\mathbf{F_k = \partial f/\partial x}\)</span>, <span class="arithmatex">\(P_{k+1} = F_k P_k F_k^\top + Q\)</span>, <span class="arithmatex">\(L = -\sum_k \log \mathcal N\big(y_k;\ h(m_k),\ H P_k H^\top + R\big)\)</span></td>
+<td><span class="arithmatex">\(d=1\)</span> → 2</td>
+<td>There is no forward mode to get <span class="arithmatex">\(F\)</span> and <span class="arithmatex">\(H\)</span>, so they are written by hand for every new model.</td>
+</tr>
+<tr>
+<td>Differentiable MPC, iLQR / DDP</td>
+<td><span class="arithmatex">\(\mathbf{A_k = \partial f/\partial x,\ B_k = \partial f/\partial u}\)</span> (and <span class="arithmatex">\(\mathbf{f_{xx}}\)</span> for DDP), Riccati gain <span class="arithmatex">\(K_k = -(R + B_k^\top P B_k)^{-1} B_k^\top P A_k\)</span></td>
+<td>iLQR <span class="arithmatex">\(d=1\)</span> → 2; DDP <span class="arithmatex">\(d=2\)</span> → 3</td>
+<td>Hand-written Jacobians and Hessians. With the Tape alone, a Jacobian costs one backward pass per output row.</td>
+</tr>
+<tr>
+<td>Physics-informed ML, PDEs</td>
+<td>Burgers residual <span class="arithmatex">\(r = u_t + u\,u_x - \nu\, \mathbf{u_{xx}}\)</span>, <span class="arithmatex">\(L = \sum r^2\)</span>; beam equation with <span class="arithmatex">\(\mathbf{u_{xxxx}}\)</span></td>
+<td><span class="arithmatex">\(d=2\)</span> → 3; <span class="arithmatex">\(d=4\)</span> → 5</td>
+<td>Has no nested derivatives of a network with respect to its inputs, and no Taylor mode (JAX has <code>jax.experimental.jet</code>).</td>
+</tr>
+<tr>
+<td>Weather and climate data assimilation (4D-Var)</td>
+<td><span class="arithmatex">\(J(x_0) = \tfrac12\lVert x_0 - x_b\rVert^2_{B^{-1}} + \tfrac12 \sum_k \lVert y_k - \mathcal H(\mathcal M_k(x_0))\rVert^2_{R^{-1}}\)</span>, with the tangent-linear model <span class="arithmatex">\(\mathbf{M_k = \partial \mathcal M_k / \partial x}\)</span></td>
+<td><span class="arithmatex">\(d=1\)</span> → 2 (when learning the model through 4D-Var)</td>
+<td>No forward mode, so the tangent-linear model is written by hand. Tape memory also grows with the window length.</td>
+</tr>
+<tr>
+<td>Quantitative finance (risk sensitivities)</td>
+<td><span class="arithmatex">\(dS = \mu S\,dt + \sigma S\,dW\)</span>, <span class="arithmatex">\(V = \mathbb E[e^{-rT}\max(S_T - K, 0)]\)</span>; delta <span class="arithmatex">\(\partial V/\partial S\)</span>, gamma <span class="arithmatex">\(\mathbf{\partial^2 V/\partial S^2}\)</span></td>
+<td>delta: order 1; gamma: order 2</td>
+<td>Delta takes one Tape pass. Gamma needs a derivative of a derivative, which is not available.</td>
+</tr>
+<tr>
+<td>Hamiltonian / Lagrangian models</td>
+<td><span class="arithmatex">\(\dot q = \mathbf{\partial H/\partial p}\)</span>, <span class="arithmatex">\(\dot p = -\mathbf{\partial H/\partial q}\)</span>; Lagrangian models need <span class="arithmatex">\(\mathbf{(\nabla^2_{\dot q}\mathcal L)^{-1}}\)</span></td>
+<td>Hamiltonian <span class="arithmatex">\(d=1\)</span> → 2; Lagrangian <span class="arithmatex">\(d=2\)</span> → 3</td>
+<td>The same as for force fields: <span class="arithmatex">\(\nabla H\)</span> is written by hand.</td>
+</tr>
+</tbody>
+</table></div>
+<p>Warp's development branch has an <em>experimental</em> forward mode ("jets", <code>wp.JetSpace</code>) that may close this gap in a
+future release. For <span class="arithmatex">\(d = 0\)</span> (rollout objectives, reinforcement-learning simulation, graphics), Warp is designed for
+the task and remains an excellent choice (§5.6).</p>
+<hr />
+<h2 id="8-limitations">8. Limitations</h2>
+<ul>
+<li><strong>Large per-step work.</strong> A 2048-wide MLP at batch size 4,096 is already compute-bound, and cuBLAS runs it near
+  peak. Kernel fusion helps most when launch overhead accounts for a substantial fraction of wall time.</li>
+<li><strong>Branch-heavy code</strong> such as contact detection or mesh queries suits Warp's thread-per-problem model better.</li>
+<li><strong>Very large batches</strong> amortise launch overhead on their own; this is how reinforcement-learning simulators cope.</li>
+<li><strong>Kernel size.</strong> An earlier version of the uncertainty-aware drone carried three tangents per problem (column).
+  Triton was still compiling its backward kernel after 15 minutes. Giving each tangent its own column recomputes the
+  state
+  update but makes the differentiated step smaller. On the RTX 6000 Ada, the one-tangent version completed its
+  first call, including compilation and execution, in 5.7 s at B = 16. Larger steps can be split across kernels
+  (the per-step helper of Section 4.4).</li>
+<li><strong>Compile time.</strong> Pallas kernels are compiled on the first call, and compile time grows with kernel size. On our
+  Threadripper CPU the first call took 0.15–0.22 s for the pendulum filter, 1.4 s for the first-order drone rollout
+  and 5.7 s for the uncertainty-aware drone; the three-tangent variant above had not compiled after 15 minutes.
+  Warp also compiles on first use, but keeps compiled kernels in a cache on disk for later runs.</li>
+<li><strong>Hardware.</strong> All Pallas measurements use the Triton backend on an NVIDIA RTX 6000 Ada.</li>
+</ul>
+<hr />
+<h2 id="9-related-work">9. Related work</h2>
+<ul>
+<li><a href="https://lin-wang.notion.site/Why-jax-lax-scan-Is-Slow-on-GPU-and-How-Pallas-Fixes-It-34ad45b463ed801eba72e885994b2708" target="_blank" rel="noopener"><em>Why jax.lax.scan Is Slow on GPU and How Pallas Fixes It</em></a>
+  (Lin Wang) runs a forward-only linear ODE in one Pallas kernel, 67× faster than Diffrax. The present work adds the
+  backward pass, higher-order derivatives inside the loss, a profiling methodology, and comparisons with Dynamax and
+  Warp.</li>
+<li><a href="https://github.com/TobiBu/jaccpot/pull/343" target="_blank" rel="noopener">jaccpot PR #343</a> uses <code>custom_vjp</code> with reverse Pallas kernels built
+  from <code>jax.vjp</code> for N-body gravity.</li>
+<li><a href="https://github.com/michael-0brien/cryojax/pull/612" target="_blank" rel="noopener">cryojax PR #612</a> adds a forward-over-reverse rule for Pallas
+  kernels.</li>
+<li><a href="https://arxiv.org/abs/2509.00406" target="_blank" rel="noopener">Locality-aware automatic differentiation on the GPU</a> keeps second-order AD in
+  on-chip memory for mesh energies.</li>
+<li><a href="https://github.com/jax-ml/jax/discussions/22611" target="_blank" rel="noopener">JAX discussion #22611</a> notes that each <code>lax.scan</code> iteration is a
+  kernel launch on GPU.</li>
+<li>Libraries used as baselines: <a href="https://github.com/probml/dynamax" target="_blank" rel="noopener">Dynamax</a>, <a href="https://github.com/NVIDIA/warp" target="_blank" rel="noopener">NVIDIA Warp</a>
+  and <a href="https://github.com/newton-physics/newton" target="_blank" rel="noopener">Newton</a>.</li>
+</ul>
+<hr />
+<h2 id="10-citation">10. Citation</h2>
+<pre class="highlight"><code class="language-bibtex">@misc{rapolu2026higherorderad,
+  title        = {Accelerating Higher-Order Automatic Differentiation for Sequential Scientific Computing},
+  author       = {Rapolu, Thribhuvan},
+  year         = {2026},
+  month        = nov,
+  howpublished = {\url{https://thribhuvanrapolu.github.io/accelerating-higher-order-autodiff/}},
+  note         = {Code: \url{https://github.com/thribhuvanrapolu/accelerating-higher-order-autodiff}}
+}</code></pre>
+    </main>
+    <footer>
+      © 2026 Thribhuvan Rapolu · Code under the Apache License 2.0 ·
+      <a href="https://github.com/thribhuvanrapolu/accelerating-higher-order-autodiff">GitHub repository</a>
+    </footer>
+  </div>
+</div>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>
+  window.addEventListener("DOMContentLoaded", function () {
+    // math: pymdownx.arithmatex wrapped every formula in \( \) or \[ \]
+    document.querySelectorAll(".arithmatex").forEach(function (el) {
+      renderMathInElement(el, {
+        delimiters: [{left: "\\[", right: "\\]", display: true}, {left: "\\(", right: "\\)", display: false}],
+        throwOnError: false
+      });
+    });
+    // code: colour only the languages highlight.js knows (bibtex stays plain)
+    document.querySelectorAll("pre code").forEach(function (el) {
+      var lang = (el.className.match(/language-(\w+)/) || [])[1];
+      if (lang && hljs.getLanguage(lang)) { hljs.highlightElement(el); }
+    });
+  });
+</script>
+</body>
+</html>

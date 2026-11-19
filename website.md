@@ -3,14 +3,15 @@
 *Fused GPU kernels with in-kernel automatic differentiation in JAX and Pallas, demonstrated on state estimation and
 model-predictive control.*
 
-> Measured 2026-11-19 on an NVIDIA RTX 6000 Ada (48 GB) with driver 595.99.02 and an AMD Ryzen Threadripper PRO 9955WX CPU.
-> The Python 3.12 benchmarks ran sequentially. One-second samples showed no competing CUDA compute process. A GNOME graphics context was present.
+**Code:** [github.com/thribhuvanrapolu/accelerating-higher-order-autodiff](https://github.com/thribhuvanrapolu/accelerating-higher-order-autodiff)
+
+> Experiments on: NVIDIA RTX 6000 Ada (48 GB) GPU and AMD Ryzen Threadripper PRO 9955WX CPU, in FP32.
 
 ---
 
 ## Abstract
 
-Many scientific models are long loops of small steps: an extended Kalman filter over a sensor log, a simulator
+Many scientific models are long loops of small steps like an extended Kalman filter over a sensor log, a simulator
 rolled out for model-predictive control, or the time stepping of an ODE solver. Training them often needs
 **higher-order** automatic differentiation, because the forward computation already contains a derivative (a
 Jacobian for covariance propagation, a force computed as a gradient of an energy). In natural JAX, each step of such a
@@ -19,24 +20,38 @@ not by arithmetic, and a GPU can be slower than a CPU.
 
 We present a simple recipe that removes this bottleneck:
 
-1. Write the step with one array per scalar (a "per-row" layout).
+1. Write the step with one array per scalar (a "structure-of-arrays" layout).
 2. Run the **entire loop inside one Pallas kernel**.
 3. Obtain the backward pass from a second kernel that applies **`jax.vjp` inside the kernel**.
 4. Connect the two kernels with `jax.custom_vjp`.
 
 No derivative is written by hand, and derivatives of derivatives are generated automatically.
 
-We evaluate the recipe on two official examples from established libraries:
+We evaluate the recipe on two official examples from established libraries. In both, one gradient processes $B$
+independent problems in parallel, while the $T$ time steps of each problem must run one after another. In
+Experiment 1 the $B$ problems are drone rollouts (simulations of candidate control plans). In Experiment 2 they are
+measurement sequences (separate 5-second sensor recordings of the same pendulum).
 
-* **Dynamax's pendulum extended Kalman filter**, where we learn gravity and sensor noise through the filter's
-  log-likelihood (second-order automatic differentiation). At B = 1, the pendulum gradient took **59.93 ms with Dynamax and 0.231 ms with Pallas (259.9×)**. The 300-step fit took 19.37 s and 0.098 s respectively.
-* **Newton’s differentiable drone.** At B = 16, the first-order drone gradient took 0.056 ms with Pallas, 0.162 ms with fused Warp and 0.917 ms with the official Newton example. At B = 16, Pallas took 0.096 ms for the uncertainty-aware gradient, a 61.9× speedup over natural JAX.
+* **Experiment 1, vs. NVIDIA Warp: Newton's differentiable drone** (model-predictive control). For $B = 16$ rollouts, as
+  in Newton's example, the first-order gradient took **0.056 ms with Pallas, 0.162 ms with fused Warp and 0.917 ms with the official Newton
+  example**. With an uncertainty-aware objective that contains a Jacobian (second order), which released Warp cannot
+  differentiate automatically, Pallas took 0.096 ms, 61.9× faster than natural JAX.
+* **Experiment 2, vs. Dynamax: a pendulum extended Kalman filter**, where we learn gravity and sensor noise through
+  the filter's log-likelihood (second order). For $B = 1$ sequence of $T = 400$ steps, the gradient took **59.93 ms with
+  Dynamax and 0.231 ms with Pallas (259.9×)**. The 300-step fit on $B = 16$ sequences took 19.37 s and 0.098 s
+  respectively.
 
-| Pendulum EKF | Kernels per gradient (B = 1) | ms per gradient (B = 1) | 300 Adam steps (B = 16) |
-|---|---:|---:|---:|
-| Dynamax (GPU) | 32,427 | 59.93 | 19.37 s |
-| Dynamax (CPU) | – | 3.39 | – |
-| **Pallas whole loop (GPU)** | 3 | 0.231 | 0.098 s |
+| Experiment | Implementation | Kernels per gradient | ms per gradient |
+|---|---|---:|---:|
+| 1: drone, first order ($B = 16$ rollouts) | Newton example (Warp) | 393 | 0.917 |
+| | Warp (ours, fused) | 61 | 0.162 |
+| | **Pallas whole rollout** | 6 | 0.056 |
+| 1: drone, second order ($B = 16$ rollouts) | Warp 1.19 | – (needs a hand-written Jacobian) | – |
+| | JAX natural | 4,801 | 5.91 |
+| | **Pallas whole rollout** | 8 | 0.096 |
+| 2: pendulum EKF ($B = 1$ sequence) | Dynamax (GPU) | 32,427 | 59.93 |
+| | Dynamax (CPU) | – | 3.39 |
+| | **Pallas whole loop** | 3 | 0.231 |
 
 ---
 
@@ -76,15 +91,30 @@ $$\text{order} = d + 1.$$
 | 2 | Hessian-based methods (Newton steps, DDP/iLQR with second-order terms) inside the loop | 3 |
 
 Higher-order automatic differentiation is routine in JAX: `jax.grad` of a function that calls `jax.jacfwd` simply
-works. The difficulty is performance on GPUs, which we explain next.
+works. The difficulty is performance on GPUs (Section 2).
+
+### 1.3 The two experiments
+
+We test the recipe against two established libraries, each on its own official example.
+
+| | Experiment 1: vs. NVIDIA Warp (Section 5) | Experiment 2: vs. Dynamax (Section 6) |
+|---|---|---|
+| problem | drone model-predictive control (Newton's official example) | learning $g$ and $r$ of a pendulum through an EKF (Dynamax's official example) |
+| what $B$ counts | rollouts (candidate control plans) | measurement sequences (sensor recordings) |
+| time steps $T$ | 30 simulator steps | 400 filter steps |
+| inner derivatives $d$ | Part A: $d = 0$ (first order). Part B: $d = 1$ (second order) | $d = 1$ (second order) |
+| what it shows | Part A: speed against a fast, hand-built first-order tool. Part B: Pallas handles a Jacobian inside the objective automatically, while released Warp needs it written by hand | a natural JAX library is launch-bound, and the GPU is slower than the CPU |
+| headline | Part A ($B = 16$): 0.056 ms vs. 0.162 ms (Warp) and 0.917 ms (Newton). Part B: 0.096 ms vs. 5.91 ms (natural JAX) | $B = 1$: 0.231 ms vs. 59.93 ms (Dynamax), 259.9× |
 
 ---
 
 ## 2. Why sequential programs are launch-bound on GPUs
 
 In JAX a loop is written with `lax.scan`, and XLA compiles the loop body into GPU kernels. XLA cannot fuse the whole
-body into one kernel. Matrix products, reductions, `jacfwd`, the bookkeeping of the backward pass and the library's
-own structure each become separate kernels.
+body into one kernel. Matrix products and reductions typically run as their own kernels, and Jacobians built with
+`jax.jacfwd` add more. The backward pass adds kernels that save and reload intermediate values at every step, and a
+general-purpose library such as Dynamax adds further small operations to support arbitrary model shapes.
+The measurements in this section and the next come from Experiment 2 (Section 6), the Dynamax pendulum filter.
 
 For a gradient that launches $N$ short kernels in sequence, a useful time model is
 $t_{\rm wall} \approx N(\bar t_{\rm kernel} + \bar t_{\rm gap})$, where the gap term includes dispatch and synchronization.
@@ -97,7 +127,6 @@ of the separately timed 59.93 ms. The remaining 17.65 ms estimates the time outs
 gaps between launches. Profiling and wall timing used separate runs, so this breakdown is approximate. For
 comparison, the whole-loop Pallas gradient at $B=1$ launched 3 kernels that executed for 0.213 ms of its 0.231 ms
 wall time (about 92%): the GPU spends its time computing, not waiting.
-[Batch-1 kernel profile](example2_pendulum_vs_dynamax/results/kernels_b1.json) · [Wall timings](example2_pendulum_vs_dynamax/results/timings.json)
 
 How much arithmetic could fit in one such interval? Using the RTX 6000 Ada's peak FP32 rate gives
 
@@ -122,8 +151,7 @@ Dynamax shows both diagnostic signs of a launch-bound loop.
 ## 3. Diagnosis: counting kernels with NVIDIA Nsight Systems
 
 Wall-clock time shows *that* a program is slow. The kernel count shows *why*. We wrap the calls to be measured in
-`cudaProfilerStart` / `cudaProfilerStop` (the context manager `profiler_range` in
-[`common/timing.py`](common/timing.py)) and run:
+`cudaProfilerStart` / `cudaProfilerStop` and run:
 
 ```bash
 nsys profile --capture-range=cudaProfilerApi --capture-range-end=stop \
@@ -137,8 +165,7 @@ nsys stats --report cuda_gpu_kern_sum --format csv report.nsys-rep
 * `--cuda-graph-trace=node` is essential. XLA places some kernels in CUDA graphs, and without this flag nsys reports
   a whole graph as a single item.
 
-[`common/nsys_count.py`](common/nsys_count.py) automates this and reports kernels per call, GPU-busy time and mean
-kernel duration. For one loss-and-gradient evaluation of the pendulum EKF ($B = 64$ sequences, $T = 400$ steps):
+Summing the kernel table gives kernels per call, GPU-busy time and mean kernel duration. For one loss-and-gradient evaluation of the pendulum EKF ($B = 64$ sequences, $T = 400$ steps):
 
 ```
 Dynamax                    41,635 kernels/gradient  (104.09 per EKF step)  mean 1.00 us
@@ -161,24 +188,31 @@ fuses operations differently for $B = 1$ than for $B = 64$:
 | Pallas: kernel per step | 7,204 | 7,612 |
 | Pallas: whole loop | 3 | 9 |
 
-[Batch-1 counts](example2_pendulum_vs_dynamax/results/kernels_b1.json) · [Batch-64 counts](example2_pendulum_vs_dynamax/results/kernels.json)
-
 ![Kernels per gradient for the pendulum EKF](example2_pendulum_vs_dynamax/figures/kernels.png)
 
 ---
 
 ## 4. Method: the whole loop in one kernel, with automatic differentiation inside
 
-### 4.1 Per-row layout
+The code in this section is from Experiment 2. Experiment 1 applies the same recipe to the drone's 13-number state.
+
+### 4.1 Structure-of-arrays layout
 
 Instead of a function of one state vector, we write the step with **every scalar replaced by an array over many
-independent problems** (a "lane" or "row"):
+independent problems**. The states of all problems are stored as a 2-D array with **one row per quantity and one
+column per problem** (a "structure of arrays"). The EKF state has five quantities, so
 
-* the 2×2 covariance becomes three arrays $(p_{00}, p_{01}, p_{11})$;
-* a quaternion becomes four arrays.
+$$\text{state} = \begin{bmatrix} m_0^{(1)} & m_0^{(2)} & \cdots & m_0^{(B)} \\[8pt] m_1^{(1)} & m_1^{(2)} & \cdots & m_1^{(B)} \\[8pt] p_{00}^{(1)} & p_{00}^{(2)} & \cdots & p_{00}^{(B)} \\[8pt] p_{01}^{(1)} & p_{01}^{(2)} & \cdots & p_{01}^{(B)} \\[8pt] p_{11}^{(1)} & p_{11}^{(2)} & \cdots & p_{11}^{(B)} \end{bmatrix} \in \mathbb{R}^{5 \times B}.$$
 
-The code remains ordinary `jax.numpy` and runs in plain JAX
-([`ekf_jax.py`](example2_pendulum_vs_dynamax/ekf_jax.py), `ekf_step_lanes`):
+Matrix formulas are written out entry by entry, so every operation acts on whole rows at once. For example, the
+covariance prediction $P' = F P F^\top + Q$ becomes
+
+$$p_{00}' = f_{00}^2\,p_{00} + 2 f_{00} f_{01}\,p_{01} + f_{01}^2\,p_{11} + Q_{00},$$
+
+where every symbol is an array over the $B$ problems. In the same way the 2×2 covariance becomes three rows
+$(p_{00}, p_{01}, p_{11})$ and a quaternion becomes four rows. The implementations called "JAX lanes" use this layout.
+
+The code remains ordinary `jax.numpy` and runs in plain JAX (function `ekf_step_lanes`):
 
 ```python
 def ekf_step_lanes(lanes):
@@ -198,8 +232,8 @@ the shape a GPU kernel expects, so the same function can run **inside** a kernel
 ### 4.2 The whole loop inside one forward kernel
 
 A Pallas kernel body is ordinary JAX code, including `lax.fori_loop`. All $T$ time steps therefore run inside one
-kernel, with the state held in registers. Each program instance processes a block of 32 problems
-([`ekf_pallas.py`](example2_pendulum_vs_dynamax/ekf_pallas.py), `make_filter_op`):
+kernel, with the state held in registers. Each program instance processes a block of 32 columns, that is, 32
+problems (function `make_filter_op`):
 
 ```python
 def forward_kernel(ys_ref, g_ref, r_ref, ll_ref, saved_ref):
@@ -265,151 +299,32 @@ def op_bwd(residuals, ll_bar):
 op.defvjp(op_fwd, op_bwd)
 ```
 
-For steps too large for a whole-loop kernel, [`common/row_kernel.py`](common/row_kernel.py) packages Sections 4.1, 4.3
-and 4.4 as a generic "one fused kernel per step" helper (`make_row_op`, about 60 lines).
+For steps too large for a whole-loop kernel, the repository packages Sections 4.1, 4.3 and 4.4 as a generic "one fused kernel per step" helper (`make_row_op`, about 60 lines).
 
 ### 4.5 Summary of the recipe
 
 | step | what it does | kernels per gradient |
 |---|---|---|
 | natural JAX (`vmap` + `lax.scan`) | one XLA loop, many kernels per step | $\mathcal O(10\text{–}100) \times T$ |
-| per-row layout (4.1) | same maths, kernel-friendly shape | slightly fewer |
+| structure-of-arrays layout (4.1) | same maths, kernel-friendly shape | slightly fewer |
 | whole loop in one kernel (4.2) | forward pass in one launch | 1 forward |
 | in-kernel `jax.vjp` (4.3) + `custom_vjp` (4.4) | backward pass in one launch, any derivative order | 1 backward (+ a few small kernels) |
 
 ---
 
-## 5. Case study: state estimation — learning a pendulum through an extended Kalman filter (vs. Dynamax)
-
-**Source.** The pendulum in [Dynamax](https://github.com/probml/dynamax)'s own EKF notebook
-(`ekf_ukf_pendulum.ipynb`, after Särkkä, *Bayesian Filtering and Smoothing*, Example 3.7). We go one step beyond the
-notebook. Instead of only filtering, we **learn** the gravity $g$ and the sensor noise $r$ by gradient descent on the
-EKF log-likelihood. Code: [`example2_pendulum_vs_dynamax/`](example2_pendulum_vs_dynamax/README.md).
-
-### 5.1 Model
-
-The state is the angle and angular velocity, $x = [\alpha,\ \dot\alpha]$, with time step $\Delta t = 0.0125$ s:
-
-$$x_{k+1} = f(x_k) + q_k, \qquad f(x) = \begin{bmatrix} \alpha + \dot\alpha\,\Delta t \\ \dot\alpha - g \sin\alpha\,\Delta t \end{bmatrix}, \qquad q_k \sim \mathcal N(0, Q),$$
-
-$$y_k = h(x_k) + r_k, \qquad h(x) = \sin\alpha, \qquad r_k \sim \mathcal N(0, r^2),$$
-
-with process noise from a continuous white-noise acceleration of intensity $q_c = 1$:
-
-$$Q = q_c \begin{bmatrix} \Delta t^3/3 & \Delta t^2/2 \\ \Delta t^2/2 & \Delta t \end{bmatrix}.$$
-
-The true values are $g = 9.8$ and $r = 0.3$. Each sequence has $T = 400$ steps (5 s) and starts at
-$x_0 = [\pi/2,\ 0]$.
-
-![Simulated pendulum data](example2_pendulum_vs_dynamax/figures/pendulum_data.png)
-
-### 5.2 One step of the extended Kalman filter
-
-The filter maintains a Gaussian belief $\mathcal N(m_k, P_k)$. It uses Dynamax's order (measure, update, predict)
-and the Jacobians $H = \partial h / \partial x$ and $F = \partial f / \partial x$:
-
-| quantity | formula | meaning |
-|---|---|---|
-| innovation variance | $S = H P H^\top + r^2$ | uncertainty of the next measurement |
-| innovation | $e = y - h(m)$ | measurement minus prediction |
-| log-likelihood | $\ell = -\tfrac12\left(\log 2\pi S + e^2 / S\right)$ | how well the model predicted $y$ |
-| gain | $K = P H^\top / S$ | weight given to the measurement |
-| update | $m \leftarrow m + K e$, $\;P \leftarrow P - K S K^\top$ | belief after observing $y$ |
-| predict | $m \leftarrow f(m)$, $\;P \leftarrow F P F^\top + Q$ | belief for the next step |
-
-For the pendulum, $H = [\cos\alpha,\ 0]$ and
-
-$$F = \begin{bmatrix} 1 & \Delta t \\ -g\cos\alpha\,\Delta t & 1 \end{bmatrix}.$$
-
-These Jacobians are never written by hand. As in Dynamax (`F, H = jacfwd(f), jacfwd(h)`), they come from
-`jax.jacfwd` in the natural implementation and from `jax.jvp` in the per-row implementation.
-
-### 5.3 Training objective and why it is second order
-
-The loss is the negative log-likelihood per measurement, averaged over $B$ sequences:
-
-$$L(g, r) = -\frac{1}{B\,T} \sum_{b=1}^{B} \sum_{k=1}^{T} \ell_k^{(b)}(g, r).$$
-
-The chain of dependencies runs $\ell_k \leftarrow S_k \leftarrow P_k \leftarrow F_{k-1}, F_{k-2}, \dots$, so the
-gradient $\partial L / \partial g$ contains $\partial F_j / \partial g$, **the derivative of a Jacobian**. One
-derivative sits inside the forward computation ($d = 1$), and training needs automatic differentiation of order
-$d + 1 = 2$ through 400 sequential steps.
-
-### 5.4 Implementations
-
-| implementation | description |
-|---|---|
-| Dynamax | `extended_kalman_filter(...).marginal_loglik` (baseline) |
-| JAX natural | the same filter written directly: `jax.jacfwd`, `lax.scan` |
-| JAX lanes | per-row layout (Section 4.1), `lax.scan` |
-| Pallas, kernel per step | one fused kernel per EKF step (`common/row_kernel.py`) |
-| **Pallas, whole loop** | the whole filter in one forward and one backward kernel (Sections 4.2–4.4) |
-
-### 5.5 Correctness
-
-$B = 64$; float32 on the RTX 6000 Ada compared with a float64 CPU reference:
-
-| implementation | loss relative error | gradient relative error |
-|---|---|---|
-| Dynamax | 7.6e-08 | 3.4e-04 |
-| JAX natural | 7.6e-08 | 1.3e-05 |
-| JAX lanes | 1.1e-08 | 4.7e-05 |
-| Pallas, kernel per step | 1.1e-08 | 4.8e-05 |
-| Pallas, whole loop | 1.1e-08 | 4.8e-05 |
-
-### 5.6 Performance
-
-Milliseconds per loss-and-gradient evaluation, $T = 400$ on the RTX 6000 Ada and Threadripper CPU.
-
-| B | Dynamax GPU | Dynamax CPU | JAX natural GPU | JAX natural CPU | JAX lanes GPU | Pallas per step | **Pallas whole loop** |
-|---:|---:|---:|---:|---:|---:|---:|---:|
-| 1 | 59.93 | 3.39 | 20.21 | 1.33 | 13.54 | 6.90 | 0.231 |
-| 16 | 65.30 | 8.15 | 21.39 | 1.43 | 12.76 | 6.96 | 0.274 |
-| 256 | 63.97 | 84.13 | 22.79 | 11.51 | 14.23 | 7.84 | 0.282 |
-| 4096 | 72.80 | – | 27.15 | – | 15.05 | 8.57 | 0.289 |
-
-Pallas gave a 259.9× speedup over Dynamax at B = 1 and 251.9× at B = 4,096.
-
-The first GPU gradient call includes JAX tracing, compilation and one synchronized execution. The speedups above use subsequent warmed calls. JAX compiles Pallas kernels inside XLA and keeps no compilation cache on disk by default (JAX's persistent compilation cache was disabled), so every first call below is a cold compile.
-
-| Batch size | Dynamax first call (s) | Pallas whole-loop first call (s) |
-|---:|---:|---:|
-| 1 | 1.107 | 0.148 |
-| 16 | 1.317 | 0.199 |
-| 256 | 1.378 | 0.206 |
-| 4,096 | 1.366 | 0.221 |
-
-### 5.7 Parameter learning
-
-300 Adam steps (learning rate 0.05), 16 sequences, starting from $(g, r) = (8.0, 0.4)$:
-
-| Implementation | Device | Wall time for 300 steps | Final $(g, r)$ |
-|---|---|---:|---|
-| Dynamax | GPU | 19.37 s | (9.5044, 0.2991) |
-| JAX natural | CPU | 0.542 s | (9.5044, 0.2991) |
-| Pallas: whole loop | GPU | 0.098 s | (9.5044, 0.2991) |
-
-All three implementations follow the same optimisation path and reach the same maximum-likelihood estimate. The true
-values are $(9.8, 0.3)$; sixteen five-second sequences do not determine $g$ more precisely.
-
-![Learning g and r](example2_pendulum_vs_dynamax/figures/fit_gravity.png)
-
----
-
-## 6. Case study: model-predictive control — NVIDIA's differentiable drone (vs. Warp)
+## 5. Experiment 1 — vs. NVIDIA Warp: drone model-predictive control
 
 **Source.** Newton's official example
 [`example_diffsim_drone.py`](https://github.com/newton-physics/newton/tree/main/newton/examples/diffsim), built on
 [NVIDIA Warp](https://github.com/NVIDIA/warp). A quadrotor must fly to a target next to a pole. Its propeller commands
-are improved by gradient descent through a 30-step simulation, for 16 rollouts at once. Code:
-[`example1_drone_vs_warp/`](example1_drone_vs_warp/README.md).
+are improved by gradient descent through a 30-step simulation, for 16 rollouts at once.
 
 * **Part A** is the example as published. The objective contains no derivatives ($d = 0$), so training needs
   first-order gradients, which is exactly what Warp is designed for.
 * **Part B** adds an uncertainty term propagated with the simulator's Jacobian ($d = 1$). Training now needs a
   derivative of a derivative, which released Warp does not provide automatically.
 
-### 6.1 Dynamics
+### 5.1 Dynamics
 
 The drone is one rigid body with mass $m = 0.56$ kg and inertia $I = \mathrm{diag}(0.00376,\ 0.00376,\ 0.00749)$
 kg m². Its four propellers sit at $p_i \in \{(0, \pm 0.2, 0),\ (\pm 0.2, 0, 0)\}$ m. The state has 13 numbers:
@@ -434,10 +349,10 @@ $$\omega_b = R^\top\omega_k, \qquad \omega_b \leftarrow \omega_b + I^{-1}\big(\t
 
 $$q_{k+1} = \mathrm{normalise}\Big(q_k + \tfrac12\,\Delta t\, (\omega^+, 0) \otimes q_k\Big), \qquad \omega_{k+1} = (1 - 0.05\,\Delta t)\, \omega^+.$$
 
-[`drone.py`](example1_drone_vs_warp/drone.py) (`simulate_step`) is a line-by-line port of Newton's
+Our step function (`simulate_step`) is a line-by-line port of Newton's
 `integrate_rigid_body` and `compute_prop_wrenches`.
 
-### 6.2 Objective (Part A)
+### 5.2 Objective (Part A)
 
 After each step $k = 0, \dots, 29$, Newton's `drone_cost` and `collision_cost` give
 
@@ -454,7 +369,7 @@ Model-predictive control needs, at every optimisation step,
 
 $$\nabla_c L, \qquad L = \sum_{b=1}^{B} \sum_{k=0}^{29} c_k^{(b)}.$$
 
-### 6.3 Part B: an uncertainty-aware objective with a Jacobian inside
+### 5.3 Part B: an uncertainty-aware objective with a Jacobian inside
 
 The drone does not know its initial tilt exactly. A small tilt error $\delta_0$ of 0.05 rad about $x$, $y$ or $z$
 propagates along the rollout through the **linearised** dynamics:
@@ -469,27 +384,27 @@ $$c_k \mathrel{+}= 100\, \operatorname{tr}\big(P_k[x, x]\big) = 100 \sum_{j=1}^{
 The gradient $\nabla_c L$ now requires $\partial F_k / \partial c$, **the derivative of a Jacobian**: second-order
 automatic differentiation through 30 steps.
 
-* **JAX:** `jax.jacfwd` (natural form) or `jax.jvp` (per-row form). `jax.grad` differentiates it again automatically.
-* **Pallas:** one row per (rollout $b$, error direction $j$). Each row carries the state and **one** tangent
+* **JAX:** `jax.jacfwd` (natural form) or `jax.jvp` (structure-of-arrays form). `jax.grad` differentiates it again automatically.
+* **Pallas:** one problem (column) per pair (rollout $b$, error direction $j$). Each column carries the state and
+  **one** tangent
   $\delta_{kj}$, and advances both with a single `jax.jvp` inside the forward kernel. The backward kernel applies
-  `jax.vjp` to it, so the second-order derivative is generated inside the kernel
-  ([`uncertainty.py`](example1_drone_vs_warp/uncertainty.py)).
+  `jax.vjp` to it, so the second-order derivative is generated inside the kernel.
 * **Warp (release 1.19):** reverse mode only. `wp.Tape` cannot differentiate a gradient or a Jacobian again. The
   product $F_k\,\delta$ (quaternion product, normalisation, gyroscopic term) would have to be written by hand and
   then differentiated by Warp. Warp's development branch contains an *experimental* forward mode ("jets",
   `wp.JetSpace`), which may make this possible in a future release.
 
-### 6.4 Implementations
+### 5.4 Implementations
 
 | implementation | description | kernels per optimisation step |
 |---|---|---|
 | Newton example (Warp) | the official code, timed through its captured CUDA graph | 393 |
 | Warp (ours) | same physics; one fused kernel per step, `wp.Tape`, CUDA graph | 30 forward + 30 adjoint |
 | JAX natural | small vectors, `vmap`, `lax.scan` | thousands |
-| JAX lanes | per-row layout, `lax.scan` | fewer thousands |
+| JAX lanes | structure-of-arrays layout, `lax.scan` | fewer thousands |
 | **Pallas whole rollout** | one kernel for the rollout, one for its backward pass (`jax.vjp` inside) | single digits |
 
-### 6.5 Correctness
+### 5.5 Correctness
 
 $B = 16$; float32 on the RTX 6000 Ada compared with a float64 CPU reference:
 
@@ -500,7 +415,7 @@ $B = 16$; float32 on the RTX 6000 Ada compared with a float64 CPU reference:
 | Pallas whole rollout | 6.6e-07 | 4.6e-07 | 8.5e-07 | 1.9e-07 |
 | Warp (ours) | 1.8e-06 | 4.8e-07 | – | – |
 
-### 6.6 Performance, Part A (first-order gradient)
+### 5.6 Performance, Part A (first-order gradient)
 
 | Implementation | Kernels per gradient (B = 16) | ms, B = 16 | ms, B = 256 | ms, B = 4096 |
 |---|---:|---:|---:|---:|
@@ -518,7 +433,7 @@ At B = 16, Pallas was 2.9× faster than fused Warp and 16.5× faster than Newton
 
 ![Time per optimisation step vs. batch size, Part A](example1_drone_vs_warp/figures/time_vs_batch.png)
 
-### 6.7 Performance, Part B (second-order gradient)
+### 5.7 Performance, Part B (second-order gradient)
 
 | Implementation | Kernels per gradient (B = 16) | ms, B = 16 | ms, B = 256 | ms, B = 4096 |
 |---|---:|---:|---:|---:|
@@ -532,6 +447,123 @@ At B = 16, Pallas took 0.096 ms for the uncertainty-aware gradient, a 61.9× spe
 ![Kernels per optimisation step, Part B](example1_drone_vs_warp/figures/kernels_uncertainty.png)
 
 ![Time per optimisation step vs. batch size, Part B](example1_drone_vs_warp/figures/time_vs_batch_uncertainty.png)
+
+---
+
+## 6. Experiment 2 — vs. Dynamax: learning a pendulum through an extended Kalman filter
+
+**Source.** The pendulum in [Dynamax](https://github.com/probml/dynamax)'s own EKF notebook
+(`ekf_ukf_pendulum.ipynb`, after Särkkä, *Bayesian Filtering and Smoothing*, Example 3.7). We go one step beyond the
+notebook. Instead of only filtering, we **learn** the gravity $g$ and the sensor noise $r$ by gradient descent on the
+EKF log-likelihood.
+
+### 6.1 Model
+
+The state is the angle and angular velocity, $x = [\alpha,\ \dot\alpha]$, with time step $\Delta t = 0.0125$ s:
+
+$$x_{k+1} = f(x_k) + q_k, \qquad f(x) = \begin{bmatrix} \alpha + \dot\alpha\,\Delta t \\ \dot\alpha - g \sin\alpha\,\Delta t \end{bmatrix}, \qquad q_k \sim \mathcal N(0, Q),$$
+
+$$y_k = h(x_k) + r_k, \qquad h(x) = \sin\alpha, \qquad r_k \sim \mathcal N(0, r^2),$$
+
+with process noise from a continuous white-noise acceleration of intensity $q_c = 1$:
+
+$$Q = q_c \begin{bmatrix} \Delta t^3/3 & \Delta t^2/2 \\ \Delta t^2/2 & \Delta t \end{bmatrix}.$$
+
+The true values are $g = 9.8$ and $r = 0.3$. Each sequence has $T = 400$ steps (5 s) and starts at
+$x_0 = [\pi/2,\ 0]$.
+
+![Simulated pendulum data](example2_pendulum_vs_dynamax/figures/pendulum_data.png)
+
+### 6.2 One step of the extended Kalman filter
+
+The filter maintains a Gaussian belief $\mathcal N(m_k, P_k)$. It uses Dynamax's order (measure, update, predict)
+and the Jacobians $H = \partial h / \partial x$ and $F = \partial f / \partial x$:
+
+| quantity | formula | meaning |
+|---|---|---|
+| innovation variance | $S = H P H^\top + r^2$ | uncertainty of the next measurement |
+| innovation | $e = y - h(m)$ | measurement minus prediction |
+| log-likelihood | $\ell = -\tfrac12\left(\log 2\pi S + e^2 / S\right)$ | how well the model predicted $y$ |
+| gain | $K = P H^\top / S$ | weight given to the measurement |
+| update | $m \leftarrow m + K e$, $\;P \leftarrow P - K S K^\top$ | belief after observing $y$ |
+| predict | $m \leftarrow f(m)$, $\;P \leftarrow F P F^\top + Q$ | belief for the next step |
+
+For the pendulum, $H = [\cos\alpha,\ 0]$ and
+
+$$F = \begin{bmatrix} 1 & \Delta t \\ -g\cos\alpha\,\Delta t & 1 \end{bmatrix}.$$
+
+These Jacobians are never written by hand. As in Dynamax (`F, H = jacfwd(f), jacfwd(h)`), they come from
+`jax.jacfwd` in the natural implementation and from `jax.jvp` in the structure-of-arrays implementation.
+
+### 6.3 Training objective and why it is second order
+
+The loss is the negative log-likelihood per measurement, averaged over $B$ sequences:
+
+$$L(g, r) = -\frac{1}{B\,T} \sum_{b=1}^{B} \sum_{k=1}^{T} \ell_k^{(b)}(g, r).$$
+
+The chain of dependencies runs $\ell_k \leftarrow S_k \leftarrow P_k \leftarrow F_{k-1}, F_{k-2}, \dots$, so the
+gradient $\partial L / \partial g$ contains $\partial F_j / \partial g$, **the derivative of a Jacobian**. One
+derivative sits inside the forward computation ($d = 1$), and training needs automatic differentiation of order
+$d + 1 = 2$ through 400 sequential steps.
+
+### 6.4 Implementations
+
+| implementation | description |
+|---|---|
+| Dynamax | `extended_kalman_filter(...).marginal_loglik` (baseline) |
+| JAX natural | the same filter written directly: `jax.jacfwd`, `lax.scan` |
+| JAX lanes | structure-of-arrays layout (Section 4.1), `lax.scan` |
+| Pallas, kernel per step | one fused kernel per EKF step (the generic helper of Section 4.4) |
+| **Pallas, whole loop** | the whole filter in one forward and one backward kernel (Sections 4.2–4.4) |
+
+### 6.5 Correctness
+
+$B = 64$; float32 on the RTX 6000 Ada compared with a float64 CPU reference:
+
+| implementation | loss relative error | gradient relative error |
+|---|---|---|
+| Dynamax | 7.6e-08 | 3.4e-04 |
+| JAX natural | 7.6e-08 | 1.3e-05 |
+| JAX lanes | 1.1e-08 | 4.7e-05 |
+| Pallas, kernel per step | 1.1e-08 | 4.8e-05 |
+| Pallas, whole loop | 1.1e-08 | 4.8e-05 |
+
+### 6.6 Performance
+
+Milliseconds per loss-and-gradient evaluation, $T = 400$ on the RTX 6000 Ada and Threadripper CPU.
+
+| B | Dynamax GPU | Dynamax CPU | JAX natural GPU | JAX natural CPU | JAX lanes GPU | Pallas per step | **Pallas whole loop** |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 59.93 | 3.39 | 20.21 | 1.33 | 13.54 | 6.90 | 0.231 |
+| 16 | 65.30 | 8.15 | 21.39 | 1.43 | 12.76 | 6.96 | 0.274 |
+| 256 | 63.97 | 84.13 | 22.79 | 11.51 | 14.23 | 7.84 | 0.282 |
+| 4096 | 72.80 | – | 27.15 | – | 15.05 | 8.57 | 0.289 |
+
+Pallas gave a 259.9× speedup over Dynamax at B = 1 and 251.9× at B = 4,096.
+
+The first GPU gradient call includes JAX tracing, compilation and one synchronized execution. The speedups above use subsequent warmed calls. JAX compiles Pallas kernels inside XLA and keeps no compilation cache on disk by default (JAX's persistent compilation cache was disabled), so every first call below is a cold compile.
+
+| Batch size | Dynamax first call (s) | Pallas whole-loop first call (s) |
+|---:|---:|---:|
+| 1 | 1.107 | 0.148 |
+| 16 | 1.317 | 0.199 |
+| 256 | 1.378 | 0.206 |
+| 4,096 | 1.366 | 0.221 |
+
+### 6.7 Parameter learning
+
+300 Adam steps (learning rate 0.05), 16 sequences, starting from $(g, r) = (8.0, 0.4)$:
+
+| Implementation | Device | Wall time for 300 steps | Final $(g, r)$ |
+|---|---|---:|---|
+| Dynamax | GPU | 19.37 s | (9.5044, 0.2991) |
+| JAX natural | CPU | 0.542 s | (9.5044, 0.2991) |
+| Pallas: whole loop | GPU | 0.098 s | (9.5044, 0.2991) |
+
+All three implementations follow the same optimisation path and reach the same maximum-likelihood estimate. The true
+values are $(9.8, 0.3)$; sixteen five-second sequences do not determine $g$ more precisely.
+
+![Learning g and r](example2_pendulum_vs_dynamax/figures/fit_gravity.png)
 
 ---
 
@@ -560,7 +592,7 @@ of order $d+1$. In each row, the inner derivative is shown in bold.
 | domain | governing equations (the inner derivative is in bold) | $d$ → order for training | what released Warp (1.19) requires |
 |---|---|---|---|
 | Molecular dynamics, ML force fields | $\mathbf{f = -\nabla_x E_\theta(x)}$, with loss $L = \sum \lVert -\nabla_x E_\theta - f^{\text{ref}} \rVert^2$ | $d=1$ → 2 (needs $\nabla_\theta \nabla_x E_\theta$) | The Tape cannot differentiate a gradient. $\nabla_x E_\theta$ must be written by hand as its own kernel. Large equivariant networks also live outside Warp. |
-| State estimation (EKF), §5 | $\mathbf{F_k = \partial f/\partial x}$, $P_{k+1} = F_k P_k F_k^\top + Q$, $L = -\sum_k \log \mathcal N\big(y_k;\ h(m_k),\ H P_k H^\top + R\big)$ | $d=1$ → 2 | There is no forward mode to get $F$ and $H$, so they are written by hand for every new model. |
+| State estimation (EKF), §6 | $\mathbf{F_k = \partial f/\partial x}$, $P_{k+1} = F_k P_k F_k^\top + Q$, $L = -\sum_k \log \mathcal N\big(y_k;\ h(m_k),\ H P_k H^\top + R\big)$ | $d=1$ → 2 | There is no forward mode to get $F$ and $H$, so they are written by hand for every new model. |
 | Differentiable MPC, iLQR / DDP | $\mathbf{A_k = \partial f/\partial x,\ B_k = \partial f/\partial u}$ (and $\mathbf{f_{xx}}$ for DDP), Riccati gain $K_k = -(R + B_k^\top P B_k)^{-1} B_k^\top P A_k$ | iLQR $d=1$ → 2; DDP $d=2$ → 3 | Hand-written Jacobians and Hessians. With the Tape alone, a Jacobian costs one backward pass per output row. |
 | Physics-informed ML, PDEs | Burgers residual $r = u_t + u\,u_x - \nu\, \mathbf{u_{xx}}$, $L = \sum r^2$; beam equation with $\mathbf{u_{xxxx}}$ | $d=2$ → 3; $d=4$ → 5 | Has no nested derivatives of a network with respect to its inputs, and no Taylor mode (JAX has `jax.experimental.jet`). |
 | Weather and climate data assimilation (4D-Var) | $J(x_0) = \tfrac12\lVert x_0 - x_b\rVert^2_{B^{-1}} + \tfrac12 \sum_k \lVert y_k - \mathcal H(\mathcal M_k(x_0))\rVert^2_{R^{-1}}$, with the tangent-linear model $\mathbf{M_k = \partial \mathcal M_k / \partial x}$ | $d=1$ → 2 (when learning the model through 4D-Var) | No forward mode, so the tangent-linear model is written by hand. Tape memory also grows with the window length. |
@@ -569,7 +601,7 @@ of order $d+1$. In each row, the inner derivative is shown in bold.
 
 Warp's development branch has an *experimental* forward mode ("jets", `wp.JetSpace`) that may close this gap in a
 future release. For $d = 0$ (rollout objectives, reinforcement-learning simulation, graphics), Warp is designed for
-the task and remains an excellent choice (§6.6).
+the task and remains an excellent choice (§5.6).
 
 ---
 
@@ -579,11 +611,12 @@ the task and remains an excellent choice (§6.6).
   peak. Kernel fusion helps most when launch overhead accounts for a substantial fraction of wall time.
 * **Branch-heavy code** such as contact detection or mesh queries suits Warp's thread-per-problem model better.
 * **Very large batches** amortise launch overhead on their own; this is how reinforcement-learning simulators cope.
-* **Kernel size.** An earlier version of the uncertainty-aware drone carried three tangents per row. Triton was
-  still compiling its backward kernel after 15 minutes. Giving each tangent its own row recomputes the state
+* **Kernel size.** An earlier version of the uncertainty-aware drone carried three tangents per problem (column).
+  Triton was still compiling its backward kernel after 15 minutes. Giving each tangent its own column recomputes the
+  state
   update but makes the differentiated step smaller. On the RTX 6000 Ada, the one-tangent version completed its
-  first call, including compilation and execution, in 5.7 s at B = 16. Larger steps can be split across kernels.
-  [Per-step kernel implementation](common/row_kernel.py)
+  first call, including compilation and execution, in 5.7 s at B = 16. Larger steps can be split across kernels
+  (the per-step helper of Section 4.4).
 * **Compile time.** Pallas kernels are compiled on the first call, and compile time grows with kernel size. On our
   Threadripper CPU the first call took 0.15–0.22 s for the pendulum filter, 1.4 s for the first-order drone rollout
   and 5.7 s for the uncertainty-aware drone; the three-tangent variant above had not compiled after 15 minutes.
@@ -611,36 +644,15 @@ the task and remains an excellent choice (§6.6).
 
 ---
 
-## 10. Reproducibility
+## 10. Citation
 
-```bash
-pip install -r requirements.txt          # JAX 0.8.2 (CUDA), Dynamax 1.0.3, Warp 1.19, Newton 1.8
-export CUDA_VISIBLE_DEVICES=0            # choose an idle GPU
-# State estimation (pendulum EKF vs. Dynamax)
-python -m example2_pendulum_vs_dynamax.check_correctness
-python -m example2_pendulum_vs_dynamax.benchmark            # timings
-python -m example2_pendulum_vs_dynamax.benchmark --kernels  # needs nsys on PATH; B = 64 -> results/kernels.json
-python -m example2_pendulum_vs_dynamax.benchmark --kernels --batch 1   # B = 1 (writes results/kernels.json too)
-mv example2_pendulum_vs_dynamax/results/kernels.json example2_pendulum_vs_dynamax/results/kernels_b1.json
-python -m example2_pendulum_vs_dynamax.benchmark --kernels  # restore the B = 64 counts
-python -m example2_pendulum_vs_dynamax.fit_gravity
-python -m example2_pendulum_vs_dynamax.make_figures
-# Model-predictive control (drone vs. Warp)
-python -m example1_drone_vs_warp.check_correctness          # Part A, incl. Warp
-python -m example1_drone_vs_warp.uncertainty                # Part B correctness
-python -m example1_drone_vs_warp.benchmark
-python -m example1_drone_vs_warp.benchmark --uncertainty
-python -m example1_drone_vs_warp.benchmark --kernels
-python -m example1_drone_vs_warp.benchmark --uncertainty --kernels
-python -m example1_drone_vs_warp.make_figures
+```bibtex
+@misc{rapolu2026higherorderad,
+  title        = {Accelerating Higher-Order Automatic Differentiation for Sequential Scientific Computing},
+  author       = {Rapolu, Thribhuvan},
+  year         = {2026},
+  month        = nov,
+  howpublished = {\url{https://thribhuvanrapolu.github.io/accelerating-higher-order-autodiff/}},
+  note         = {Code: \url{https://github.com/thribhuvanrapolu/accelerating-higher-order-autodiff}}
+}
 ```
-
-GPU runs used FP32 with `jax_default_matmul_precision = "highest"`. Timings are median synchronized wall times after warm-up (20 GPU and 10 CPU evaluations for the pendulum, 50 GPU evaluations for the drone). The 300-step fit includes the optimizer and host reads and excludes the warm-up step. Nsight Systems 2026.1.3 counted kernel launches in a separate capture of three warmed calls. Speedups use the unrounded wall times.
-
-Median and first-call timings are available for the [pendulum](example2_pendulum_vs_dynamax/results/timings.json), [first-order drone](example1_drone_vs_warp/results/timings.json) and [uncertainty-aware drone](example1_drone_vs_warp/results/timings_uncertainty.json). The [fit history](example2_pendulum_vs_dynamax/results/fit.json) records all 300 optimizer steps.
-
-| folder | contents |
-|---|---|
-| [`common/`](common/) | `row_kernel.py` (generic fused kernel with in-kernel `jax.vjp`), `timing.py`, `nsys_count.py`, `plot_style.py` |
-| [`example1_drone_vs_warp/`](example1_drone_vs_warp/README.md) | Newton's drone: physics, JAX / Pallas / Warp implementations, uncertainty-aware objective, benchmarks |
-| [`example2_pendulum_vs_dynamax/`](example2_pendulum_vs_dynamax/README.md) | Dynamax's pendulum EKF: Dynamax / JAX / Pallas implementations, benchmarks, parameter learning |
