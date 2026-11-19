@@ -2,55 +2,55 @@
   {
     "implementation": "JAX natural",
     "batch": 16,
-    "ms": 22.48106396291405,
-    "first_call_s": 25.422292092000134
+    "ms": 5.914243520237505,
+    "first_call_s": 8.797610449022613
   },
   {
     "implementation": "JAX lanes",
     "batch": 16,
-    "ms": 17.93728896882385,
-    "first_call_s": 9.252201011986472
+    "ms": 4.563624475849792,
+    "first_call_s": 3.3267644620500505
   },
   {
     "implementation": "Pallas: whole rollout",
     "batch": 16,
-    "ms": 2.559685497544706,
-    "first_call_s": 15.688063423032872
+    "ms": 0.09561999468132854,
+    "first_call_s": 5.698120946995914
   },
   {
     "implementation": "JAX natural",
     "batch": 256,
-    "ms": 26.707280019763857,
-    "first_call_s": 24.61403135897126
+    "ms": 6.92416651872918,
+    "first_call_s": 9.973687555990182
   },
   {
     "implementation": "JAX lanes",
     "batch": 256,
-    "ms": 18.301358039025217,
-    "first_call_s": 9.041546016000211
+    "ms": 4.960974969435483,
+    "first_call_s": 3.4821642489987426
   },
   {
     "implementation": "Pallas: whole rollout",
     "batch": 256,
-    "ms": 1.4867169666104019,
-    "first_call_s": 15.687957966001704
+    "ms": 0.08509500185027719,
+    "first_call_s": 5.373662572004832
   },
   {
     "implementation": "JAX natural",
     "batch": 4096,
-    "ms": 41.82746401056647,
-    "first_call_s": 25.552786604035646
+    "ms": 15.393934503663331,
+    "first_call_s": 8.177382257010322
   },
   {
     "implementation": "JAX lanes",
     "batch": 4096,
-    "ms": 21.869811520446092,
-    "first_call_s": 7.897248355089687
+    "ms": 5.332531494786963,
+    "first_call_s": 2.4241871439735405
   },
   {
     "implementation": "Pallas: whole rollout",
     "batch": 4096,
-    "ms": 2.9209014610387385,
-    "first_call_s": 15.241340099950321
+    "ms": 0.18356950022280216,
+    "first_call_s": 5.321617687994149
   }
 ]

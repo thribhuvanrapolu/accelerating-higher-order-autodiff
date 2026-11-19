@@ -73,9 +73,9 @@ Now $\nabla_c L$ needs $\partial F_k / \partial c$: **the derivative of a Jacobi
   $\delta_{kj}$ and advances both with a single `jax.jvp` inside the forward kernel; the backward kernel runs
   `jax.vjp` of it, so a second-order derivative is generated inside the kernel. Code: [`uncertainty.py`](uncertainty.py).
 
-  *Lesson learned:* our first version carried all three tangents in one row. Its backward kernel was about three
-  times bigger, and Triton had not finished compiling it after 15 minutes (Triton's compile time grows roughly
-  quadratically with kernel size). One tangent per row: 15.7 s for the first call, compile included.
+  An earlier version carried three tangents per row, and Triton was still compiling its backward kernel after 15 minutes.
+  With one tangent per row, the backward kernel is smaller. At B = 16 the first synchronized evaluation, including compilation, took 8.8 s for natural JAX, 3.3 s for JAX lanes, 5.7 s for Pallas.
+
 * Warp (released 1.19): reverse mode only; `wp.Tape` cannot differentiate a gradient or Jacobian again. You must
   hand-write $F_k\,\delta$ for this step (quaternion product, normalisation, gyroscopic term, …) and let Warp
   differentiate that. Warp's development branch has *experimental* forward-mode "jets"
@@ -89,17 +89,38 @@ Now $\nabla_c L$ needs $\partial F_k / \partial c$: **the derivative of a Jacobi
 | [`rollout_jax.py`](rollout_jax.py) `loss_lanes` | per-row JAX (each scalar is an array over rollouts) | XLA, fewer kernels |
 | [`rollout_pallas.py`](rollout_pallas.py) | **one Pallas kernel for the whole rollout**, one for its backward pass (`jax.vjp` inside) | 2 kernels |
 | [`rollout_warp.py`](rollout_warp.py) | Warp the Warp way: one kernel per step, `wp.Tape`, CUDA graph | 30 forward + 30 adjoint kernels |
-| Newton's own example | the official code, timed through its captured CUDA graph | ~390 kernels |
+| Newton's own example | the official code, timed through its captured CUDA graph | 393 kernels |
 
-All are checked against a float64 reference in [`check_correctness.py`](check_correctness.py) (cost and gradient
-agree to ~1e-6 relative).
+The JAX, Pallas and fused Warp implementations were checked against a float64 CPU reference. Newton's official graph is a timing baseline.
+
+## 5. Results on RTX 6000 Ada
+
+At B = 16, the first-order drone gradient took 0.056 ms with Pallas, 0.162 ms with fused Warp and 0.917 ms with the official Newton example.
+
+| Implementation | Kernels per gradient (B = 16) | ms, B = 16 | ms, B = 256 | ms, B = 4096 |
+|---|---:|---:|---:|---:|
+| Newton example (Warp) | 393 | 0.917 | 1.25 | 1.91 |
+| Warp (ours) | 61 | 0.162 | 0.294 | 0.302 |
+| JAX natural | 2,566 | 2.79 | 3.23 | 3.84 |
+| JAX lanes | 1,839 | 2.38 | 2.38 | 2.51 |
+| **Pallas whole rollout** | 6 | 0.056 | 0.066 | 0.066 |
+
+At B = 16, Pallas took 0.096 ms for the uncertainty-aware gradient, a 61.9× speedup over natural JAX.
+
+| Implementation | Kernels per gradient (B = 16) | ms, B = 16 | ms, B = 256 | ms, B = 4096 |
+|---|---:|---:|---:|---:|
+| Warp 1.19 (requires a hand-written Jacobian) | – | – | – | – |
+| JAX natural | 4,801 | 5.91 | 6.92 | 15.39 |
+| JAX lanes | 2,925 | 4.56 | 4.96 | 5.33 |
+| **Pallas whole rollout** | 8 | 0.096 | 0.085 | 0.184 |
 
 ```bash
-cd jax_pallas
+# Run from the repository root
 python -m example1_drone_vs_warp.check_correctness       # Part A, incl. Warp
 python -m example1_drone_vs_warp.uncertainty             # Part B correctness
 python -m example1_drone_vs_warp.benchmark               # Part A timings (incl. Newton's example)
 python -m example1_drone_vs_warp.benchmark --uncertainty # Part B timings
 python -m example1_drone_vs_warp.benchmark --kernels     # nsys kernel counts
+python -m example1_drone_vs_warp.benchmark --uncertainty --kernels
 python -m example1_drone_vs_warp.make_figures
 ```

@@ -27,7 +27,7 @@ def bar_figure(file, title, out):
     bars = ax.barh(names[::-1], counts[::-1], color=[color(n) for n in names[::-1]])
     ax.set_xscale("log")
     ax.bar_label(bars, labels=[f"{c:,.0f}" for c in counts[::-1]], padding=3)
-    ax.set(xlabel="GPU kernels per optimisation step (log scale)", title=title)
+    ax.set(xlabel="GPU kernels per optimisation step (log scale)", title=f"{title}\nNVIDIA RTX 6000 Ada")
     ax.set_xlim(1, max(counts) * 8)
     fig.savefig(FIGURES / out)
 
@@ -38,8 +38,10 @@ def timing_figure(file, title, out):
     for name in dict.fromkeys(r["implementation"] for r in rows):
         pts = sorted((r["batch"], r["ms"]) for r in rows if r["implementation"] == name)
         ax.plot(*zip(*pts), "o-", color=color(name), label=name, lw=2, ms=4)
-    ax.set(xscale="log", yscale="log", xlabel="number of rollouts B", ylabel="ms per optimisation step", title=title)
-    ax.legend(fontsize=8)
+    ax.set(xscale="log", yscale="log", xlabel="number of rollouts B", ylabel="ms per optimisation step", title=f"{title}\nNVIDIA RTX 6000 Ada")
+    batches = sorted({r["batch"] for r in rows})
+    ax.set_xticks(batches, labels=[f"{b:,}" for b in batches])
+    ax.legend(fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.22), ncol=3)
     fig.savefig(FIGURES / out)
 
 

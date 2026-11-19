@@ -1,4 +1,4 @@
-# Tested on Linux, Python 3.13, NVIDIA A100 (CUDA 12/13 driver).
+# RTX 6000 Ada benchmark environment: Linux, Python 3.12, NVIDIA driver 595.99.02.
 # JAX with GPU support (Pallas' Triton backend is bundled with jaxlib)
 jax[cuda12]==0.8.2
 optax==0.2.6

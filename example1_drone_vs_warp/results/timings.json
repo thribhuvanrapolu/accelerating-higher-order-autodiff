@@ -2,91 +2,91 @@
   {
     "implementation": "JAX natural",
     "batch": 16,
-    "ms": 12.37638300517574,
-    "first_call_s": 5.43997879489325
+    "ms": 2.7937230188399553,
+    "first_call_s": 2.1039594290195964
   },
   {
     "implementation": "JAX lanes",
     "batch": 16,
-    "ms": 9.181772940792143,
-    "first_call_s": 4.0555462969932705
+    "ms": 2.3798765032552183,
+    "first_call_s": 1.4703745489823632
   },
   {
     "implementation": "Pallas: whole rollout",
     "batch": 16,
-    "ms": 0.42901700362563133,
-    "first_call_s": 4.090520621044561
+    "ms": 0.055590004194527864,
+    "first_call_s": 1.4151643629884347
   },
   {
     "implementation": "Warp (ours)",
     "batch": 16,
-    "ms": 2.777192508801818,
-    "first_call_s": 0.0023442190140485764
+    "ms": 0.16178100486285985,
+    "first_call_s": 0.0003099530003964901
   },
   {
     "implementation": "Newton example",
     "batch": 16,
-    "ms": 4.351100011263043,
-    "first_call_s": 0.012238672934472561
+    "ms": 0.9173629805445671,
+    "first_call_s": 0.006282554008066654
   },
   {
     "implementation": "JAX natural",
     "batch": 256,
-    "ms": 12.958605017047375,
-    "first_call_s": 5.396430891938508
+    "ms": 3.2268220093101263,
+    "first_call_s": 2.7398530049831606
   },
   {
     "implementation": "JAX lanes",
     "batch": 256,
-    "ms": 9.355067042633891,
-    "first_call_s": 3.2144955300027505
+    "ms": 2.377943485043943,
+    "first_call_s": 1.1885599329834804
   },
   {
     "implementation": "Pallas: whole rollout",
     "batch": 256,
-    "ms": 0.22862647892907262,
-    "first_call_s": 4.4483308859635144
+    "ms": 0.06571499397978187,
+    "first_call_s": 1.5097946019959636
   },
   {
     "implementation": "Warp (ours)",
     "batch": 256,
-    "ms": 3.2857819460332394,
-    "first_call_s": 0.0016819729935377836
+    "ms": 0.2939779660664499,
+    "first_call_s": 0.0004231440252624452
   },
   {
     "implementation": "Newton example",
     "batch": 256,
-    "ms": 7.584373524878174,
-    "first_call_s": 0.007959885988384485
+    "ms": 1.2541960168164223,
+    "first_call_s": 0.002133189991582185
   },
   {
     "implementation": "JAX natural",
     "batch": 4096,
-    "ms": 13.667984574567527,
-    "first_call_s": 5.334717224002816
+    "ms": 3.8383944774977863,
+    "first_call_s": 2.4363728330354206
   },
   {
     "implementation": "JAX lanes",
     "batch": 4096,
-    "ms": 12.420562445186079,
-    "first_call_s": 3.279947373084724
+    "ms": 2.5081825151573867,
+    "first_call_s": 1.1213128930539824
   },
   {
     "implementation": "Pallas: whole rollout",
     "batch": 4096,
-    "ms": 0.517877982929349,
-    "first_call_s": 4.241626647068188
+    "ms": 0.06606100942008197,
+    "first_call_s": 1.745565038989298
   },
   {
     "implementation": "Warp (ours)",
     "batch": 4096,
-    "ms": 3.266274929046631,
-    "first_call_s": 0.0019634650088846684
+    "ms": 0.3021754964720458,
+    "first_call_s": 0.00045113801024854183
   },
   {
     "implementation": "Newton example",
     "batch": 4096,
-    "ms": 8.671706484165043,
-    "first_call_s": 0.009651454980485141
+    "ms": 1.905323500977829,
+    "first_call_s": 0.0029309469973668456
   }
 ]

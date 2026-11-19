@@ -35,7 +35,7 @@ def kernels_figure():
     ax.set_xscale("log")
     ax.bar_label(bars, labels=[f"{c:,.0f}" for c in counts[::-1]], padding=3)
     ax.set(xlabel="GPU kernels per training step (log scale)",
-           title=f"Kernels launched by one loss + gradient (B = {rows[0]['batch']}, T = 400)")
+           title=f"RTX 6000 Ada kernels per gradient (B = {rows[0]['batch']}, T = 400)")
     ax.set_xlim(1, max(counts) * 8)
     fig.savefig(FIGURES / "kernels.png")
 
@@ -52,8 +52,10 @@ def timing_figure():
                         else color(name), label=label, lw=2, ms=4, alpha=0.6 if name == "JAX natural" and
                         device == "cpu" else 1.0)
     ax.set(xscale="log", yscale="log", xlabel="number of sequences B", ylabel="ms per training step",
-           title="Time of one loss + gradient (A100 unless marked CPU)")
-    ax.legend(fontsize=8, ncol=2)
+           title="Pendulum loss + gradient on RTX 6000 Ada and CPU")
+    batches = sorted({r["batch"] for r in rows})
+    ax.set_xticks(batches, labels=[f"{b:,}" for b in batches])
+    ax.legend(fontsize=8, ncol=3, loc="upper center", bbox_to_anchor=(0.5, -0.22))
     fig.savefig(FIGURES / "time_vs_batch.png")
 
 
@@ -64,13 +66,14 @@ def fit_figure():
         h = np.array(run["history"])
         label = f"{run['implementation']} ({run['device'].upper()})"
         c = color(run["implementation"]) if run["device"] == "gpu" else color(label)
-        axes[0].plot(h[:, 3], h[:, 0], color=c, lw=2, label=f"{label}: {h[-1, 3]:.1f} s")
+        axes[0].plot(h[:, 3], h[:, 0], color=c, lw=2, label=f"{label}: {h[-1, 3]:.2f} s")
         axes[1].plot(np.arange(1, len(h) + 1), h[:, 0], color=c, lw=2)
     axes[0].axhline(G_TRUE, color="k", lw=0.8, ls=":")
     axes[1].axhline(G_TRUE, color="k", lw=0.8, ls=":")
     axes[0].set(xscale="log", xlabel="wall-clock time (s)", ylabel="learned g", title="Learning g: time")
     axes[1].set(xlabel="Adam step", title="Learning g: same steps, same result")
-    axes[0].legend(fontsize=7, loc="lower right")
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=3)
     fig.savefig(FIGURES / "fit_gravity.png")
     print("final (g, r):", {r["implementation"]: tuple(np.round(r["history"][-1][:2], 4)) for r in runs},
           f"true ({G_TRUE}, {R_TRUE})")

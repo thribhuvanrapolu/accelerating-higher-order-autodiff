@@ -2,8 +2,8 @@
 
 *How to see it with a profiler, and how to fix it with Pallas kernels that differentiate themselves.*
 
-> **Draft.** The timings below were measured on an A100 that was shared with another job; they will be re-measured
-> on an idle GPU before publishing. Kernel counts and correctness results are not affected by the sharing.
+> Measured 2026-11-19 on an NVIDIA RTX 6000 Ada (48 GB, GPU 1) with driver 595.99.02 and an AMD Ryzen Threadripper PRO 9955WX CPU.
+> The Python 3.12 benchmarks ran sequentially. One-second samples showed no competing CUDA compute process. A GNOME graphics context was present.
 
 ---
 
@@ -13,22 +13,19 @@
   out for model-predictive control, an ODE solver. Written in natural JAX, each step becomes **dozens to hundreds of
   tiny GPU kernels**. The GPU spends its time starting kernels, not computing.
 * We show it on two **official examples from other libraries**:
-  * **Dynamax**'s pendulum extended Kalman filter (learning gravity from data): **41,635 kernels** for one gradient,
-    and the GPU is **12× slower than the CPU**.
-  * **NVIDIA Newton/Warp**'s differentiable drone (model-predictive control): ~390 kernels per optimisation step.
+  * Dynamax's pendulum filter launched 41,635 kernels per gradient at B = 64. At B = 1, its GPU gradient took 17.7× as long as its CPU gradient.
+  * **NVIDIA Newton/Warp**'s differentiable drone (model-predictive control): 393 kernels per optimisation step.
 * The fix: put **the whole loop in one Pallas kernel**, and get the backward pass by running **`jax.vjp` inside a
   second kernel**. No derivative is written by hand, and derivatives *of* derivatives (Jacobians inside the loss)
   come for free.
-* Results (preliminary): the pendulum gradient goes from **246 ms (Dynamax) to 0.67 ms (≈ 370×)**, with
-  **9 kernels instead of 41,635**; learning $g$ takes **0.9 s instead of 73 s**. The drone rollout gradient takes
-  **0.43 ms vs 2.8 ms (Warp) and 4.4 ms (Newton's example)**, and unlike Warp it also handles a cost with a
-  Jacobian inside.
+* At B = 1, the pendulum gradient took **59.93 ms with Dynamax and 0.231 ms with Pallas (259.9×)**. The 300-step fit took 19.37 s and 0.098 s respectively.
+* At B = 16, the first-order drone gradient took 0.056 ms with Pallas, 0.162 ms with fused Warp and 0.917 ms with the official Newton example.
 
-| | kernels per gradient | time per gradient | learning $g$ |
-|---|---|---|---|
-| Dynamax EKF (GPU) | 41,635 | 246 ms | 73.4 s |
-| Dynamax EKF (CPU) | – | 21 ms | – |
-| **Pallas: whole filter in one kernel (GPU)** | **9** | **0.67 ms** | **0.89 s** |
+| Pendulum EKF | Kernels per gradient (B = 64) | ms per gradient (B = 1) | 300 Adam steps (B = 16) |
+|---|---:|---:|---:|
+| Dynamax (GPU) | 41,635 | 59.93 | 19.37 s |
+| Dynamax (CPU) | – | 3.39 | – |
+| **Pallas whole loop (GPU)** | 9 | 0.231 | 0.098 s |
 
 ---
 
@@ -40,20 +37,35 @@ result to learn a parameter.
 
 In JAX you write this with `lax.scan`, and XLA turns the loop body into GPU kernels. But XLA cannot fuse everything
 in the body into one kernel: matrix products, reductions, `jacfwd`, the bookkeeping of the backward pass and the
-library's own structure each become separate kernels. Every kernel launch takes a couple of microseconds, **whatever
-it computes**:
+library's own structure each become separate kernels.
 
-$$t_{\text{step}} \;\approx\; N_{\text{kernels}} \times c, \qquad c \approx 2.5\ \mu\text{s on an A100}.$$
+For a gradient that launches $N$ short kernels in sequence, a useful time model is
+$T_{\rm wall} \approx N(\bar t_{\rm kernel} + \bar t_{\rm gap})$, where the gap term includes dispatch and synchronization.
+Each pendulum EKF step does only a few hundred arithmetic operations per sequence, yet its forward and backward
+passes launch many separate kernels. At $B=1$, Dynamax launched 32,427 kernels for a gradient that took 59.93 ms.
+That gives an effective wall time of $c = T_{\rm wall}/N \approx 1.85\,\mu\mathrm{s}$ per kernel.
 
-A rule of thumb: in $c = 2.5\ \mu$s an A100 could do about $19.5 \times 10^{12} \times 2.5 \times 10^{-6} \approx
-5 \times 10^{7}$ FP32 operations. A kernel that does **far less work than that** is dominated by its launch.
-Our EKF kernels each do a few hundred operations per sequence.
+Nsight Systems measured 1.34 µs of execution per kernel, or 43.37 ms summed over the gradient. That is about 72%
+of the separately timed 59.93 ms. The remaining 16.56 ms estimates the time outside kernel execution, including
+gaps between launches. Profiling and wall timing used separate runs, so this breakdown is approximate.
+[Batch-1 kernel profile](example2_pendulum_vs_dynamax/results/kernels_dynamax_b1.json) · [Wall timings](example2_pendulum_vs_dynamax/results/timings.json)
 
-Two tell-tale signs:
+How much arithmetic could fit in one such interval? Using the RTX 6000 Ada's peak FP32 rate gives
 
-1. **The time does not grow with the batch.** 1 sequence or 4,096 sequences take about the same time (the GPU is idle
-   either way).
-2. **The CPU wins** for small batches.
+$$W = P_{\rm peak}\,c \approx 91.1 \times 10^{12}\ \frac{\mathrm{FLOP}}{\mathrm{s}}
+\times 1.85 \times 10^{-6}\ \mathrm{s} \approx 1.7 \times 10^8\ \mathrm{FLOP}.$$
+
+This is a peak-throughput yardstick. A tiny kernel doing a fraction of one EKF step uses very little of that
+capacity. The earlier shared-A100 estimate was about $5\times10^7$ FLOP per interval. A higher peak rate raises
+the opportunity cost of a microsecond spent on a tiny kernel, though the two runs had different load conditions.
+[NVIDIA RTX 6000 Ada specifications](https://www.nvidia.com/en-us/products/workstations/rtx-6000/)
+
+Dynamax shows both diagnostic signs of a launch-bound loop.
+
+1. **Batch scaling.** Increasing the batch from 1 to 4,096 sequences increased GPU time by only
+   $72.80/59.93 \approx 1.21\times$. The larger batch put more work into each launch.
+2. **Small-batch CPU performance.** At $B=1$, the CPU finished in 3.39 ms and the GPU in 59.93 ms.
+   The CPU was $59.93/3.39 \approx 17.7\times$ faster.
 
 ![time vs batch](example2_pendulum_vs_dynamax/figures/time_vs_batch.png)
 
@@ -74,14 +86,14 @@ as one item. [`common/nsys_count.py`](common/nsys_count.py) does this and sums t
 For Dynamax's EKF, one loss + gradient over 64 sequences × 400 steps:
 
 ```
-Dynamax                        41635 kernels/step  ( 104.1 per EKF step)  mean 2.44 us
-JAX natural                    18422 kernels/step  (  46.1 per EKF step)  mean 3.07 us
-JAX lanes                      12012 kernels/step  (  30.0 per EKF step)  mean 3.26 us
-Pallas: kernel per step         7612 kernels/step  (  19.0 per EKF step)  mean 2.81 us
-Pallas: whole loop                 9 kernels/step  (   0.0 per EKF step)  mean 64.02 us
+Dynamax                    41,635 kernels/gradient  (104.09 per EKF step)  mean 1.00 us
+JAX natural                18,422 kernels/gradient  ( 46.05 per EKF step)  mean 1.05 us
+JAX lanes                  11,212 kernels/gradient  ( 28.03 per EKF step)  mean 1.05 us
+Pallas: kernel per step     7,612 kernels/gradient  ( 19.03 per EKF step)  mean 1.02 us
+Pallas: whole loop              9 kernels/gradient  (  0.02 per EKF step)  mean 29.48 us
 ```
 
-**104 kernels for every EKF step**, each running for 2.4 µs. That is the whole story.
+Dynamax averaged 104.1 kernels per EKF step. Nsight recorded 1.00 µs per kernel on average and 41.70 ms of summed kernel duration per gradient. The unprofiled wall times below also include dispatch and synchronization.
 
 ![kernels](example2_pendulum_vs_dynamax/figures/kernels.png)
 
@@ -106,7 +118,7 @@ def ekf_step_lanes(lanes):
     ...
 ```
 
-On its own this only helps XLA a little (18,422 → 12,012 kernels). Its real purpose: it is exactly the shape a GPU
+On its own this only helps XLA a little (18,422 → 11,212 kernels). Its real purpose: it is exactly the shape a GPU
 kernel wants, so the same function can run **inside** a kernel.
 
 ### Idea 2 — put the whole loop inside one kernel
@@ -199,14 +211,14 @@ $\partial F / \partial g$: second-order autodiff through 400 sequential steps.
 | Pallas, kernel per step | 1.1e-08 | 4.8e-05 |
 | Pallas, whole loop | 1.1e-08 | 4.8e-05 |
 
-**Speed** (ms per loss + gradient, T = 400; preliminary, shared GPU):
+**Speed** (ms per loss + gradient, T = 400, RTX 6000 Ada and Threadripper CPU):
 
-| B | Dynamax GPU | Dynamax CPU | JAX natural GPU | JAX natural CPU | Pallas per step | **Pallas whole loop** |
-|---|---|---|---|---|---|---|
-| 1 | 245.8 | 21.5 | 74.0 | 8.7 | 27.4 | **0.67** |
-| 16 | 240.7 | 74.1 | 80.0 | 10.6 | 27.3 | **0.77** |
-| 256 | 250.7 | 815.5 | 86.8 | 70.1 | 31.7 | **3.34** |
-| 4096 | 287.2 | – | 101.3 | – | 33.5 | **3.52** |
+| B | Dynamax GPU | Dynamax CPU | JAX natural GPU | JAX natural CPU | JAX lanes GPU | Pallas per step | **Pallas whole loop** |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 59.93 | 3.39 | 20.21 | 1.33 | 13.54 | 6.90 | 0.231 |
+| 16 | 65.30 | 8.15 | 21.39 | 1.43 | 12.76 | 6.96 | 0.274 |
+| 256 | 63.97 | 84.13 | 22.79 | 11.51 | 14.23 | 7.84 | 0.282 |
+| 4096 | 72.80 | – | 27.15 | – | 15.05 | 8.57 | 0.289 |
 
 **Learning $g$ and $r$** (300 Adam steps, 16 sequences, start $(8.0, 0.4)$): all three implementations take the same
 steps and land on the same maximum-likelihood estimate $(g, r) = (9.504, 0.299)$ (true $(9.8, 0.3)$; 16 five-second
@@ -228,20 +240,19 @@ kernels, and the whole forward + backward pass captured as a CUDA graph. We comp
 * **natural JAX** and **per-row JAX**,
 * **Pallas: the whole 30-step rollout in one kernel**, backward with `jax.vjp` inside.
 
-All agree with a float64 reference to ~1e-6.
+The JAX, Pallas and fused Warp implementations agree with the float64 reference to about 1e-6.
 
 ### Part A — the example as written (first-order gradient)
 
-| implementation | kernels per optimisation step (B = 16) | ms, B = 16 | ms, B = 256 | ms, B = 4096 |
-|---|---|---|---|---|
-| Newton example (Warp) | 393 | 4.35 | 7.58 | 8.67 |
-| Warp (ours) | 61 | 2.78 | 3.29 | 3.27 |
-| JAX natural | 2,537 | 12.38 | 12.96 | 13.67 |
-| JAX lanes | 1,809 | 9.18 | 9.36 | 12.42 |
-| **Pallas whole rollout** | **6** | **0.43** | **0.23** | **0.52** |
+| Implementation | Kernels per gradient (B = 16) | ms, B = 16 | ms, B = 256 | ms, B = 4096 |
+|---|---:|---:|---:|---:|
+| Newton example (Warp) | 393 | 0.917 | 1.25 | 1.91 |
+| Warp (ours) | 61 | 0.162 | 0.294 | 0.302 |
+| JAX natural | 2,566 | 2.79 | 3.23 | 3.84 |
+| JAX lanes | 1,839 | 2.38 | 2.38 | 2.51 |
+| **Pallas whole rollout** | 6 | 0.056 | 0.066 | 0.066 |
 
-*(preliminary, shared GPU: Warp's GPU-busy time is only 0.30 ms per step, so on an idle GPU its wall time will be
-much closer to Pallas'.)*
+At B = 16, Pallas was 2.9× faster than fused Warp and 16.5× faster than Newton’s example.
 
 ![drone trajectory](example1_drone_vs_warp/figures/trajectory.png)
 ![drone kernels](example1_drone_vs_warp/figures/kernels.png)
@@ -261,16 +272,16 @@ first-order reverse mode only**: you would have to hand-write $F_k\,\delta$ for 
 Warp differentiate that. (Warp's development branch has an experimental forward mode, "jets", which may change this
 in a future release.)
 
-| implementation | kernels per optimisation step (B = 16) | ms, B = 16 | ms, B = 256 | ms, B = 4096 |
-|---|---|---|---|---|
-| Warp (released) | – (needs a hand-written Jacobian) | – | – | – |
-| JAX natural (`jax.jacfwd`) | 4,741 | 22.48 | 26.71 | 41.83 |
-| JAX lanes (`jax.jvp`) | 2,925 | 17.94 | 18.30 | 21.87 |
-| **Pallas whole rollout** (`jvp` in the kernel, `vjp` of it in the backward kernel) | **9** | **2.56** | **1.49** | **2.92** |
+| Implementation | Kernels per gradient (B = 16) | ms, B = 16 | ms, B = 256 | ms, B = 4096 |
+|---|---:|---:|---:|---:|
+| Warp 1.19 (requires a hand-written Jacobian) | – | – | – | – |
+| JAX natural | 4,801 | 5.91 | 6.92 | 15.39 |
+| JAX lanes | 2,925 | 4.56 | 4.96 | 5.33 |
+| **Pallas whole rollout** | 8 | 0.096 | 0.085 | 0.184 |
 
-*(preliminary, shared GPU; Pallas' GPU-busy time is 0.13 ms per step at B = 16.)* All three agree with a float64
-reference to ~1e-6 (cost and gradient).
+At B = 16, Pallas took 0.096 ms for the uncertainty-aware gradient, a 61.9× speedup over natural JAX. All three implementations agree with the float64 reference to about 1e-6.
 
+![drone timings, part B](example1_drone_vs_warp/figures/time_vs_batch_uncertainty.png)
 ![drone kernels, part B](example1_drone_vs_warp/figures/kernels_uncertainty.png)
 
 ---
@@ -291,16 +302,16 @@ batteries), scientific ML and PDEs, weather and climate data assimilation, quant
 ## 7. When it does not help
 
 * **Big per-step work.** A 2048-wide MLP at batch 4,096 is already compute-bound; cuBLAS does it near peak. Fusion
-  only helps when each kernel does far less than ~$5 \times 10^7$ operations.
+  helps most when launch overhead accounts for a substantial fraction of wall time.
 * **Branch-heavy code** (contact detection, mesh queries) suits Warp's thread-per-problem model better.
 * **Huge batches** amortise the launch overhead on their own (that is how RL simulators cope).
-* **Kernel size.** The step must fit in registers. Big step bodies (thousands of operations, especially after a
-  `vjp` of a `jvp`) make Triton compile slowly and spill registers. We hit this in Part B: carrying three tangent
-  vectors per row gave a backward kernel that had not compiled after 15 minutes; giving each tangent its own row
-  (the state is simply recomputed per row) brought the first call down to 16 s. If a step is still too big, split it
-  into a few kernels ([`common/row_kernel.py`](common/row_kernel.py)).
+* **Kernel size.** An earlier version of the uncertainty-aware drone carried three tangents per row. Triton was
+  still compiling its backward kernel after 15 minutes. Giving each tangent its own row recomputes the state
+  update but makes the differentiated step smaller. On the RTX 6000 Ada, the one-tangent version completed its
+  first call, including compilation and execution, in 5.7 s at B = 16. Larger steps can be split across kernels.
+  [Per-step kernel implementation](common/row_kernel.py)
 * **Compile time.** Pallas/Triton kernels take seconds to minutes to compile; Warp's NVRTC compile is faster.
-* **Hardware.** This used Pallas' Triton backend on an NVIDIA A100.
+* **Hardware.** This used Pallas' Triton backend on an NVIDIA RTX 6000 Ada.
 
 ## 8. Related work
 
@@ -321,7 +332,7 @@ batteries), scientific ML and PDEs, weather and climate data assimilation, quant
 
 ```bash
 pip install -r requirements.txt          # JAX 0.8.2 (CUDA), Dynamax 1.0.3, Warp 1.19, Newton 1.8
-cd jax_pallas
+export CUDA_VISIBLE_DEVICES="$(nvidia-smi -i 1 --query-gpu=uuid --format=csv,noheader)"
 python -m example2_pendulum_vs_dynamax.check_correctness
 python -m example2_pendulum_vs_dynamax.benchmark            # timings
 python -m example2_pendulum_vs_dynamax.benchmark --kernels  # needs nsys on PATH
@@ -329,12 +340,16 @@ python -m example2_pendulum_vs_dynamax.fit_gravity
 python -m example2_pendulum_vs_dynamax.make_figures
 python -m example1_drone_vs_warp.check_correctness
 python -m example1_drone_vs_warp.uncertainty
-python -m example1_drone_vs_warp.benchmark [--uncertainty] [--kernels]
+python -m example1_drone_vs_warp.benchmark
+python -m example1_drone_vs_warp.benchmark --uncertainty
+python -m example1_drone_vs_warp.benchmark --kernels
+python -m example1_drone_vs_warp.benchmark --uncertainty --kernels
 python -m example1_drone_vs_warp.make_figures
 ```
 
-All runs use true FP32 (`jax_default_matmul_precision = "highest"`; on an A100 JAX otherwise uses TF32 for matrix
-products).
+GPU runs used FP32 with `jax_default_matmul_precision = "highest"`. Timings are median synchronized wall times after warm-up (20 GPU and 10 CPU evaluations for the pendulum, 50 GPU evaluations for the drone). The 300-step fit includes the optimizer and host reads and excludes the warm-up step. Nsight Systems 2026.1.3 counted kernel launches in a separate capture of three warmed calls. Speedups use the unrounded wall times.
+
+Median and first-call timings are available for the [pendulum](example2_pendulum_vs_dynamax/results/timings.json), [first-order drone](example1_drone_vs_warp/results/timings.json) and [uncertainty-aware drone](example1_drone_vs_warp/results/timings_uncertainty.json). The [fit history](example2_pendulum_vs_dynamax/results/fit.json) records all 300 optimizer steps.
 
 | folder | contents |
 |---|---|

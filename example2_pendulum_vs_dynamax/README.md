@@ -56,22 +56,35 @@ automatic differentiation of order $d + 1 = 2$, through a loop of $T = 400$ sequ
 ## 4. Why it is slow on a GPU
 
 Each EKF step is a handful of operations on 2-vectors and 2×2 matrices: a few hundred floating-point operations.
-XLA compiles `lax.scan` into a GPU loop whose body is still many small kernels. nsys counts, for one training step
+XLA compiles `lax.scan` into a GPU loop whose body is still many small kernels. Nsight Systems counts on RTX 6000 Ada for one training step
 (B = 64, T = 400):
 
 | implementation | kernels per training step | per EKF step |
 |---|---|---|
-| Dynamax `extended_kalman_filter` | 41,635 | 104 |
-| our natural JAX EKF | 18,422 | 46 |
-| per-row ("lanes") JAX EKF | 12,012 | 30 |
-| Pallas, one kernel per EKF step | 7,612 | 19 |
-| **Pallas, whole filter in one kernel** | **9** | **0.02** |
+| Dynamax | 41,635 | 104.09 |
+| JAX natural | 18,422 | 46.05 |
+| JAX lanes | 11,212 | 28.03 |
+| Pallas: kernel per step | 7,612 | 19.03 |
+| Pallas: whole loop | 9 | 0.02 |
 
-Each kernel takes about 2.5 µs to launch and run no matter how little it computes, so
+Dynamax averaged 104.1 kernels per EKF step. Nsight recorded 1.00 µs per kernel on average and 41.70 ms of summed kernel duration per gradient. The unprofiled wall times below also include dispatch and synchronization.
 
-$$t_{\text{step}} \approx N_{\text{kernels}} \times 2.5\ \mu\text{s},$$
+Dynamax GPU time rose from 59.93 ms at B = 1 to 72.80 ms at B = 4,096. The CPU took 3.39 ms for one sequence. The whole-loop GPU kernel sped up the Dynamax GPU evaluation by 259.9× and 251.9× at those batch sizes.
 
-and the time hardly changes with the batch size $B$: the GPU is waiting, not computing.
+Median wall time in milliseconds per loss and gradient.
+
+| B | Dynamax GPU | Dynamax CPU | JAX natural GPU | JAX natural CPU | JAX lanes GPU | Pallas per step | **Pallas whole loop** |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 59.93 | 3.39 | 20.21 | 1.33 | 13.54 | 6.90 | 0.231 |
+| 16 | 65.30 | 8.15 | 21.39 | 1.43 | 12.76 | 6.96 | 0.274 |
+| 256 | 63.97 | 84.13 | 22.79 | 11.51 | 14.23 | 7.84 | 0.282 |
+| 4096 | 72.80 | – | 27.15 | – | 15.05 | 8.57 | 0.289 |
+
+| Implementation | Device | Wall time for 300 steps | Final $(g, r)$ |
+|---|---|---:|---|
+| Dynamax | GPU | 19.37 s | (9.5044, 0.2991) |
+| JAX natural | CPU | 0.542 s | (9.5044, 0.2991) |
+| Pallas: whole loop | GPU | 0.098 s | (9.5044, 0.2991) |
 
 ## 5. The fix: the whole filter in one kernel, with autodiff inside the kernel
 
@@ -99,7 +112,7 @@ and the time hardly changes with the batch size $B$: the GPU is waiting, not com
 | [`make_figures.py`](make_figures.py) | the figures in `figures/` |
 
 ```bash
-cd jax_pallas
+# Run from the repository root
 python -m example2_pendulum_vs_dynamax.check_correctness
 python -m example2_pendulum_vs_dynamax.benchmark
 python -m example2_pendulum_vs_dynamax.benchmark --kernels      # needs nsys on PATH

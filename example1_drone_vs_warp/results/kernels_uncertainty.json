@@ -2,22 +2,22 @@
   {
     "implementation": "JAX natural",
     "batch": 16,
-    "kernels_per_call": 4741.0,
-    "gpu_busy_ms_per_call": 14.688325,
-    "mean_kernel_us": 3.0981491246572457
+    "kernels_per_call": 4801.0,
+    "gpu_busy_ms_per_call": 5.855639,
+    "mean_kernel_us": 1.2196706936054988
   },
   {
     "implementation": "JAX lanes",
     "batch": 16,
     "kernels_per_call": 2925.0,
-    "gpu_busy_ms_per_call": 9.974138,
-    "mean_kernel_us": 3.4099617094017094
+    "gpu_busy_ms_per_call": 3.2675723333333333,
+    "mean_kernel_us": 1.1171187464387464
   },
   {
     "implementation": "Pallas: whole rollout",
     "batch": 16,
-    "kernels_per_call": 9.0,
-    "gpu_busy_ms_per_call": 0.13195833333333334,
-    "mean_kernel_us": 14.662037037037036
+    "kernels_per_call": 8.0,
+    "gpu_busy_ms_per_call": 0.05037966666666666,
+    "mean_kernel_us": 6.297458333333333
   }
 ]

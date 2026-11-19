@@ -1,0 +1,9 @@
+[
+  {
+    "implementation": "Dynamax",
+    "batch": 1,
+    "kernels_per_call": 32427.0,
+    "gpu_busy_ms_per_call": 43.369094,
+    "mean_kernel_us": 1.3374377524902088
+  }
+]
