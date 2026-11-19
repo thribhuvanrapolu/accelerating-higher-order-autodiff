@@ -12,7 +12,8 @@ os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")     # several pr
 import jax
 import numpy as np
 
-# True FP32 everywhere: on an A100, JAX's default matrix products use TF32 (about 3 significant digits).
+# True FP32 everywhere: on Ampere and newer GPUs (e.g. A100, RTX 6000 Ada), JAX's default matrix products use TF32
+# (about 3 significant digits).
 jax.config.update("jax_default_matmul_precision", "highest")
 
 

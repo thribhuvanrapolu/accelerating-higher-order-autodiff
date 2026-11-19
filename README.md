@@ -2,7 +2,7 @@
 
 *How to see it with a profiler, and how to fix it with Pallas kernels that differentiate themselves.*
 
-> Measured 2026-11-19 on an NVIDIA RTX 6000 Ada (48 GB, GPU 1) with driver 595.99.02 and an AMD Ryzen Threadripper PRO 9955WX CPU.
+> Measured 2026-11-19 on an NVIDIA RTX 6000 Ada (48 GB) with driver 595.99.02 and an AMD Ryzen Threadripper PRO 9955WX CPU.
 > The Python 3.12 benchmarks ran sequentially. One-second samples showed no competing CUDA compute process. A GNOME graphics context was present.
 
 ---
@@ -45,10 +45,10 @@ Each pendulum EKF step does only a few hundred arithmetic operations per sequenc
 passes launch many separate kernels. At $B=1$, Dynamax launched 32,427 kernels for a gradient that took 59.93 ms.
 That gives an effective wall time of $c = T_{\rm wall}/N \approx 1.85\,\mu\mathrm{s}$ per kernel.
 
-Nsight Systems measured 1.34 µs of execution per kernel, or 43.37 ms summed over the gradient. That is about 72%
-of the separately timed 59.93 ms. The remaining 16.56 ms estimates the time outside kernel execution, including
+Nsight Systems measured 1.30 µs of execution per kernel, or 42.28 ms summed over the gradient. That is about 71%
+of the separately timed 59.93 ms. The remaining 17.65 ms estimates the time outside kernel execution, including
 gaps between launches. Profiling and wall timing used separate runs, so this breakdown is approximate.
-[Batch-1 kernel profile](example2_pendulum_vs_dynamax/results/kernels_dynamax_b1.json) · [Wall timings](example2_pendulum_vs_dynamax/results/timings.json)
+[Batch-1 kernel profile](example2_pendulum_vs_dynamax/results/kernels_b1.json) · [Wall timings](example2_pendulum_vs_dynamax/results/timings.json)
 
 How much arithmetic could fit in one such interval? Using the RTX 6000 Ada's peak FP32 rate gives
 
@@ -56,8 +56,7 @@ $$W = P_{\rm peak}\,c \approx 91.1 \times 10^{12}\ \frac{\mathrm{FLOP}}{\mathrm{
 \times 1.85 \times 10^{-6}\ \mathrm{s} \approx 1.7 \times 10^8\ \mathrm{FLOP}.$$
 
 This is a peak-throughput yardstick. A tiny kernel doing a fraction of one EKF step uses very little of that
-capacity. The earlier shared-A100 estimate was about $5\times10^7$ FLOP per interval. A higher peak rate raises
-the opportunity cost of a microsecond spent on a tiny kernel, though the two runs had different load conditions.
+capacity. The faster the GPU, the more arithmetic is forgone in each microsecond spent on a tiny kernel.
 [NVIDIA RTX 6000 Ada specifications](https://www.nvidia.com/en-us/products/workstations/rtx-6000/)
 
 Dynamax shows both diagnostic signs of a launch-bound loop.
@@ -332,7 +331,7 @@ batteries), scientific ML and PDEs, weather and climate data assimilation, quant
 
 ```bash
 pip install -r requirements.txt          # JAX 0.8.2 (CUDA), Dynamax 1.0.3, Warp 1.19, Newton 1.8
-export CUDA_VISIBLE_DEVICES="$(nvidia-smi -i 1 --query-gpu=uuid --format=csv,noheader)"
+export CUDA_VISIBLE_DEVICES=0            # choose an idle GPU
 python -m example2_pendulum_vs_dynamax.check_correctness
 python -m example2_pendulum_vs_dynamax.benchmark            # timings
 python -m example2_pendulum_vs_dynamax.benchmark --kernels  # needs nsys on PATH

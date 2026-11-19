@@ -3,7 +3,7 @@
 *Fused GPU kernels with in-kernel automatic differentiation in JAX and Pallas, demonstrated on state estimation and
 model-predictive control.*
 
-> Measured 2026-11-19 on an NVIDIA RTX 6000 Ada (48 GB, GPU 1) with driver 595.99.02 and an AMD Ryzen Threadripper PRO 9955WX CPU.
+> Measured 2026-11-19 on an NVIDIA RTX 6000 Ada (48 GB) with driver 595.99.02 and an AMD Ryzen Threadripper PRO 9955WX CPU.
 > The Python 3.12 benchmarks ran sequentially. One-second samples showed no competing CUDA compute process. A GNOME graphics context was present.
 
 ---
@@ -615,7 +615,7 @@ the task and remains an excellent choice (§6.6).
 
 ```bash
 pip install -r requirements.txt          # JAX 0.8.2 (CUDA), Dynamax 1.0.3, Warp 1.19, Newton 1.8
-export CUDA_VISIBLE_DEVICES="$(nvidia-smi -i 1 --query-gpu=uuid --format=csv,noheader)"
+export CUDA_VISIBLE_DEVICES=0            # choose an idle GPU
 # State estimation (pendulum EKF vs. Dynamax)
 python -m example2_pendulum_vs_dynamax.check_correctness
 python -m example2_pendulum_vs_dynamax.benchmark            # timings
