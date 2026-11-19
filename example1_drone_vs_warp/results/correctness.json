@@ -1,0 +1,24 @@
+{
+  "reference_cost": 4550.179129508915,
+  "batch": 16,
+  "JAX natural": {
+    "cost": 4550.181640625,
+    "rel_err_cost": 5.518719183110496e-07,
+    "rel_err_grad": 2.967921257563674e-07
+  },
+  "JAX lanes": {
+    "cost": 4550.1826171875,
+    "rel_err_cost": 7.664925897625924e-07,
+    "rel_err_grad": 4.6179356486419264e-07
+  },
+  "Pallas: whole rollout": {
+    "cost": 4550.18212890625,
+    "rel_err_cost": 6.59182254036821e-07,
+    "rel_err_grad": 4.6179356486419264e-07
+  },
+  "Warp": {
+    "cost": 4550.1875,
+    "rel_err_cost": 1.8395959470203065e-06,
+    "rel_err_grad": 4.785884332723537e-07
+  }
+}

@@ -1,0 +1,17 @@
+# Tested on Linux, Python 3.13, NVIDIA A100 (CUDA 12/13 driver).
+# JAX with GPU support (Pallas' Triton backend is bundled with jaxlib)
+jax[cuda12]==0.8.2
+optax==0.2.6
+numpy
+matplotlib
+
+# Example 2 baseline: Dynamax (needs TensorFlow Probability's JAX substrate)
+dynamax==1.0.3
+tfp-nightly
+fastprogress==1.0.3      # newer fastprogress needs python-fasthtml, which Dynamax does not use
+
+# Example 1 baselines: NVIDIA Warp and the Newton physics engine (for its official drone example)
+warp-lang==1.19.0
+newton[examples]==1.8.0
+
+# Kernel counts: NVIDIA Nsight Systems (nsys), from the CUDA toolkit (not a pip package)

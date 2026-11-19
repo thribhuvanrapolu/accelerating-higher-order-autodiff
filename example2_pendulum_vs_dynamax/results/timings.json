@@ -1,0 +1,184 @@
+[
+  {
+    "implementation": "Dynamax",
+    "device": "gpu",
+    "batch": 1,
+    "ms": 245.81913952715695,
+    "first_call_s": 3.267491113045253
+  },
+  {
+    "implementation": "Dynamax",
+    "device": "cpu",
+    "batch": 1,
+    "ms": 21.469030994921923,
+    "first_call_s": 1.012170888017863
+  },
+  {
+    "implementation": "JAX natural",
+    "device": "gpu",
+    "batch": 1,
+    "ms": 74.01437649969012,
+    "first_call_s": 2.436401558923535
+  },
+  {
+    "implementation": "JAX natural",
+    "device": "cpu",
+    "batch": 1,
+    "ms": 8.690771937835962,
+    "first_call_s": 0.5250185569748282
+  },
+  {
+    "implementation": "JAX lanes",
+    "device": "gpu",
+    "batch": 1,
+    "ms": 54.52887050341815,
+    "first_call_s": 1.3520773589843884
+  },
+  {
+    "implementation": "Pallas: kernel per step",
+    "device": "gpu",
+    "batch": 1,
+    "ms": 27.412368450313807,
+    "first_call_s": 0.7919856810476631
+  },
+  {
+    "implementation": "Pallas: whole loop",
+    "device": "gpu",
+    "batch": 1,
+    "ms": 0.6681070080958307,
+    "first_call_s": 0.3738804809981957
+  },
+  {
+    "implementation": "Dynamax",
+    "device": "gpu",
+    "batch": 16,
+    "ms": 240.65196001902223,
+    "first_call_s": 4.083764577982947
+  },
+  {
+    "implementation": "Dynamax",
+    "device": "cpu",
+    "batch": 16,
+    "ms": 74.1400535334833,
+    "first_call_s": 1.16651682194788
+  },
+  {
+    "implementation": "JAX natural",
+    "device": "gpu",
+    "batch": 16,
+    "ms": 79.99209250556305,
+    "first_call_s": 2.4433113869745284
+  },
+  {
+    "implementation": "JAX natural",
+    "device": "cpu",
+    "batch": 16,
+    "ms": 10.565767996013165,
+    "first_call_s": 0.562856980948709
+  },
+  {
+    "implementation": "JAX lanes",
+    "device": "gpu",
+    "batch": 16,
+    "ms": 52.331004466395825,
+    "first_call_s": 1.4307137470459566
+  },
+  {
+    "implementation": "Pallas: kernel per step",
+    "device": "gpu",
+    "batch": 16,
+    "ms": 27.320805529598147,
+    "first_call_s": 0.8197604990564287
+  },
+  {
+    "implementation": "Pallas: whole loop",
+    "device": "gpu",
+    "batch": 16,
+    "ms": 0.7665810408070683,
+    "first_call_s": 0.5998026289744303
+  },
+  {
+    "implementation": "Dynamax",
+    "device": "gpu",
+    "batch": 256,
+    "ms": 250.65505149541423,
+    "first_call_s": 4.2812744169496
+  },
+  {
+    "implementation": "Dynamax",
+    "device": "cpu",
+    "batch": 256,
+    "ms": 815.4498154763132,
+    "first_call_s": 1.6717355939326808
+  },
+  {
+    "implementation": "JAX natural",
+    "device": "gpu",
+    "batch": 256,
+    "ms": 86.76551800454035,
+    "first_call_s": 2.6863891209941357
+  },
+  {
+    "implementation": "JAX natural",
+    "device": "cpu",
+    "batch": 256,
+    "ms": 70.10704546701163,
+    "first_call_s": 0.6227234669495374
+  },
+  {
+    "implementation": "JAX lanes",
+    "device": "gpu",
+    "batch": 256,
+    "ms": 56.308686442207545,
+    "first_call_s": 1.4615843179635704
+  },
+  {
+    "implementation": "Pallas: kernel per step",
+    "device": "gpu",
+    "batch": 256,
+    "ms": 31.663120025768876,
+    "first_call_s": 0.8686136950273067
+  },
+  {
+    "implementation": "Pallas: whole loop",
+    "device": "gpu",
+    "batch": 256,
+    "ms": 3.343052521813661,
+    "first_call_s": 0.6212941780686378
+  },
+  {
+    "implementation": "Dynamax",
+    "device": "gpu",
+    "batch": 4096,
+    "ms": 287.14718302944675,
+    "first_call_s": 4.569873759988695
+  },
+  {
+    "implementation": "JAX natural",
+    "device": "gpu",
+    "batch": 4096,
+    "ms": 101.28206899389625,
+    "first_call_s": 2.7137343090726063
+  },
+  {
+    "implementation": "JAX lanes",
+    "device": "gpu",
+    "batch": 4096,
+    "ms": 60.42513146530837,
+    "first_call_s": 1.5005453730700538
+  },
+  {
+    "implementation": "Pallas: kernel per step",
+    "device": "gpu",
+    "batch": 4096,
+    "ms": 33.53091247845441,
+    "first_call_s": 0.8685388480080292
+  },
+  {
+    "implementation": "Pallas: whole loop",
+    "device": "gpu",
+    "batch": 4096,
+    "ms": 3.515649528708309,
+    "first_call_s": 0.6535867530619726
+  }
+]

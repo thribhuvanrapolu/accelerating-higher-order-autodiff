@@ -1,0 +1,37 @@
+[
+  {
+    "implementation": "JAX natural",
+    "batch": 16,
+    "kernels_per_call": 2537.0,
+    "gpu_busy_ms_per_call": 7.141966333333333,
+    "mean_kernel_us": 2.815122717119958
+  },
+  {
+    "implementation": "JAX lanes",
+    "batch": 16,
+    "kernels_per_call": 1809.0,
+    "gpu_busy_ms_per_call": 3.045543,
+    "mean_kernel_us": 1.6835505804311774
+  },
+  {
+    "implementation": "Pallas: whole rollout",
+    "batch": 16,
+    "kernels_per_call": 6.0,
+    "gpu_busy_ms_per_call": 0.06396766666666666,
+    "mean_kernel_us": 10.661277777777777
+  },
+  {
+    "implementation": "Warp (ours)",
+    "batch": 16,
+    "kernels_per_call": 61.0,
+    "gpu_busy_ms_per_call": 0.29911766666666667,
+    "mean_kernel_us": 4.9035683060109285
+  },
+  {
+    "implementation": "Newton example",
+    "batch": 16,
+    "kernels_per_call": 393.0,
+    "gpu_busy_ms_per_call": 1.2650063333333332,
+    "mean_kernel_us": 3.218845631891434
+  }
+]

@@ -1,0 +1,92 @@
+[
+  {
+    "implementation": "JAX natural",
+    "batch": 16,
+    "ms": 12.37638300517574,
+    "first_call_s": 5.43997879489325
+  },
+  {
+    "implementation": "JAX lanes",
+    "batch": 16,
+    "ms": 9.181772940792143,
+    "first_call_s": 4.0555462969932705
+  },
+  {
+    "implementation": "Pallas: whole rollout",
+    "batch": 16,
+    "ms": 0.42901700362563133,
+    "first_call_s": 4.090520621044561
+  },
+  {
+    "implementation": "Warp (ours)",
+    "batch": 16,
+    "ms": 2.777192508801818,
+    "first_call_s": 0.0023442190140485764
+  },
+  {
+    "implementation": "Newton example",
+    "batch": 16,
+    "ms": 4.351100011263043,
+    "first_call_s": 0.012238672934472561
+  },
+  {
+    "implementation": "JAX natural",
+    "batch": 256,
+    "ms": 12.958605017047375,
+    "first_call_s": 5.396430891938508
+  },
+  {
+    "implementation": "JAX lanes",
+    "batch": 256,
+    "ms": 9.355067042633891,
+    "first_call_s": 3.2144955300027505
+  },
+  {
+    "implementation": "Pallas: whole rollout",
+    "batch": 256,
+    "ms": 0.22862647892907262,
+    "first_call_s": 4.4483308859635144
+  },
+  {
+    "implementation": "Warp (ours)",
+    "batch": 256,
+    "ms": 3.2857819460332394,
+    "first_call_s": 0.0016819729935377836
+  },
+  {
+    "implementation": "Newton example",
+    "batch": 256,
+    "ms": 7.584373524878174,
+    "first_call_s": 0.007959885988384485
+  },
+  {
+    "implementation": "JAX natural",
+    "batch": 4096,
+    "ms": 13.667984574567527,
+    "first_call_s": 5.334717224002816
+  },
+  {
+    "implementation": "JAX lanes",
+    "batch": 4096,
+    "ms": 12.420562445186079,
+    "first_call_s": 3.279947373084724
+  },
+  {
+    "implementation": "Pallas: whole rollout",
+    "batch": 4096,
+    "ms": 0.517877982929349,
+    "first_call_s": 4.241626647068188
+  },
+  {
+    "implementation": "Warp (ours)",
+    "batch": 4096,
+    "ms": 3.266274929046631,
+    "first_call_s": 0.0019634650088846684
+  },
+  {
+    "implementation": "Newton example",
+    "batch": 4096,
+    "ms": 8.671706484165043,
+    "first_call_s": 0.009651454980485141
+  }
+]

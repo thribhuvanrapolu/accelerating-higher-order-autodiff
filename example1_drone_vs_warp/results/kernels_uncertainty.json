@@ -1,0 +1,23 @@
+[
+  {
+    "implementation": "JAX natural",
+    "batch": 16,
+    "kernels_per_call": 4741.0,
+    "gpu_busy_ms_per_call": 14.688325,
+    "mean_kernel_us": 3.0981491246572457
+  },
+  {
+    "implementation": "JAX lanes",
+    "batch": 16,
+    "kernels_per_call": 2925.0,
+    "gpu_busy_ms_per_call": 9.974138,
+    "mean_kernel_us": 3.4099617094017094
+  },
+  {
+    "implementation": "Pallas: whole rollout",
+    "batch": 16,
+    "kernels_per_call": 9.0,
+    "gpu_busy_ms_per_call": 0.13195833333333334,
+    "mean_kernel_us": 14.662037037037036
+  }
+]
